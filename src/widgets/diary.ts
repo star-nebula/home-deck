@@ -140,12 +140,13 @@ export const diaryWidget: WidgetDefinition<DiaryConfig> = {
       for (const entry of entries) byYear.set(entry.year, (byYear.get(entry.year) ?? 0) + 1);
       const filters = body.createDiv({ cls: "hp-filter-row" });
       const segmented = filters.createDiv({ cls: "hp-segmented" });
-      const chip = (label: string, year: string) => {
+      const chip = (label: string, year: string, count?: number) => {
         const button = segmented.createEl("button", {
           cls: `hp-segment${config.year === year ? " is-active" : ""}`,
-          text: label,
           attr: { type: "button" }
         });
+        button.createSpan({ text: label });
+        if (count !== undefined) button.createSpan({ cls: "hp-segment-count", text: String(count) });
         button.addEventListener("click", () => {
           if (config.year === year) {
             void ctx.saveConfig({ year: "" }).then(() => ctx.rerender());
@@ -155,7 +156,7 @@ export const diaryWidget: WidgetDefinition<DiaryConfig> = {
         });
       };
       chip("全部", "");
-      for (const year of [...byYear.keys()].sort().reverse()) chip(`${year} ${byYear.get(year)}`, year);
+      for (const year of [...byYear.keys()].sort().reverse()) chip(year, year, byYear.get(year));
     }
 
     // 年份分组列表：最新在前，点击打开。

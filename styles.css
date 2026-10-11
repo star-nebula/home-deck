@@ -3097,6 +3097,12 @@
   color: var(--text-normal);
 }
 
+.hp-segment-count {
+  margin-left: 6px;
+  color: color-mix(in srgb, var(--hp-muted) 62%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
 .hp-segment.is-active {
   background: color-mix(in srgb, var(--hp-accent) 14%, transparent);
   color: var(--text-normal);
