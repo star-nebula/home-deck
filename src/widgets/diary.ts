@@ -1,4 +1,4 @@
-import { Setting, setIcon, TFile } from "obsidian";
+import { Setting, TFile } from "obsidian";
 import { addNumberSetting, addPathSetting } from "../ui/settingHelpers";
 import { findDailyNote, getDailyNoteSettings, getOrCreateDailyNote, isInScope, isExcluded } from "../utils/vault";
 import { toIsoDate } from "../utils/date";
@@ -187,10 +187,12 @@ export const diaryWidget: WidgetDefinition<DiaryConfig> = {
         }
         rendered++;
         const row = list.createDiv({ cls: "hp-list-row hp-diary-row is-clickable", attr: { title: entry.file.path } });
-        setIcon(row.createSpan({ cls: "hp-list-icon" }), "calendar");
         const text = row.createDiv({ cls: "hp-list-text" });
+        const title = text.createDiv({ cls: "hp-list-title" });
+        title.createSpan({ text: entry.date });
         const weekday = weekdayLabel(entry.date);
-        text.createSpan({ cls: "hp-list-title", text: weekday ? `${entry.date} · ${weekday}` : entry.date });
+        if (weekday) title.createSpan({ cls: "hp-diary-weekday", text: weekday });
+        if (entry.date === today) title.createSpan({ cls: "hp-diary-today", text: "今天" });
         if (config.showPreview) {
           void app.vault.cachedRead(entry.file).then((content) => {
             if (!ctx.isAlive()) return;
@@ -198,7 +200,6 @@ export const diaryWidget: WidgetDefinition<DiaryConfig> = {
             if (preview) text.createDiv({ cls: "hp-list-sub hp-diary-preview", text: preview });
           });
         }
-        row.createSpan({ cls: "hp-list-meta", text: entry.date === today ? "今天" : "" });
         row.addEventListener("click", (event) => void ctx.openPath(entry.file.path, { event }));
       }
       if (truncated) break;

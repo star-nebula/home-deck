@@ -751,7 +751,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 8px 4px;
+  padding: 8px 8px 3px;
 }
 
 .hp-diary-group-head:first-child {
@@ -759,19 +759,38 @@
 }
 
 .hp-diary-group-name {
-  color: var(--hp-accent);
-  font-size: 12px;
-  font-weight: 800;
+  color: var(--hp-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .hp-diary-group-count {
-  color: var(--hp-muted);
+  color: color-mix(in srgb, var(--hp-muted) 60%, transparent);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
 .hp-diary-row .hp-list-title {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
   font-variant-numeric: tabular-nums;
+}
+
+.hp-diary-weekday {
+  color: var(--hp-muted);
+  font-size: 11px;
+}
+
+.hp-diary-today {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--hp-accent) 15%, transparent);
+  color: var(--hp-accent);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
 }
 
 .hp-diary-preview {
@@ -3015,10 +3034,13 @@
 }
 
 .hp-kpi-value {
+  overflow: hidden;
   color: var(--hp-tone);
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1.1;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
