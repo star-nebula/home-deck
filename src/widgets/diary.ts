@@ -86,6 +86,8 @@ export const diaryWidget: WidgetDefinition<DiaryConfig> = {
 
   render(body, ctx) {
     const { app, config } = ctx;
+    const root = body.createDiv({ cls: "hp-diary" });
+    body = root;
     const settings = getDailyNoteSettings(app);
     // 未配置时跟随核心「每日笔记」插件的文件夹，让组件开箱即用。
     const folder = config.folder.trim() || settings.folder;

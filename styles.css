@@ -746,6 +746,17 @@
 
 /* ---- 日记组件 --------------------------------------------------------------- */
 
+/* 卡片 body 无自带内边距，列表区有 .hp-list 兜底；
+   日记的 KPI/筛选行直接挂在 body 上，需要组件级内边距兜住四边。 */
+.hp-diary {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  padding: 10px 12px 12px;
+}
+
 .hp-diary-group-head {
   display: flex;
   align-items: baseline;
