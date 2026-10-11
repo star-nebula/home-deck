@@ -3080,14 +3080,14 @@
 }
 
 .hp-segment {
-  padding: 1px 16px;
+  padding: 0 11px;
   border: none;
   border-radius: 999px;
   background: transparent;
   color: var(--hp-muted);
   font-size: 11px;
   font-weight: 500;
-  line-height: 18px;
+  line-height: 16px;
   cursor: pointer;
   box-shadow: none;
   transition: background 0.12s ease, color 0.12s ease;
