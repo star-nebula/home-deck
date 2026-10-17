@@ -1667,16 +1667,22 @@ export const mediaWidget: WidgetDefinition<MediaConfig> = {
     loadDesktopBtn.addEventListener("click", () => {
       let content = "";
       try {
-        interface ElectronFs {
-          existsSync: (p: string) => boolean;
-          readFileSync: (p: string, enc: string) => string;
-        }
-        const electronRequire = (window as unknown as { require?: (mod: string) => ElectronFs }).require;
+        const electronRequire = (window as unknown as { require?: (mod: string) => unknown }).require;
         if (typeof electronRequire === "function") {
-          const fs = electronRequire("fs");
-          const desktopPath = "C:\\Users\\加加\\Desktop\\follow.opml";
-          if (fs && fs.existsSync(desktopPath)) {
-            content = fs.readFileSync(desktopPath, "utf8");
+          const fs = electronRequire("fs") as { existsSync: (p: string) => boolean; readFileSync: (p: string, enc: string) => string };
+          const os = electronRequire("os") as { homedir: () => string };
+          const path = electronRequire("path") as { join: (...segments: string[]) => string };
+          const home = os.homedir();
+          // 桌面目录名可能是本地化的「桌面」，或被 OneDrive 重定向到用户目录之外
+          const candidates = [
+            path.join(home, "Desktop", "follow.opml"),
+            path.join(home, "桌面", "follow.opml"),
+            path.join(home, "OneDrive", "Desktop", "follow.opml"),
+            path.join(home, "OneDrive", "桌面", "follow.opml")
+          ];
+          const hit = candidates.find((candidate) => fs.existsSync(candidate));
+          if (hit) {
+            content = fs.readFileSync(hit, "utf8");
           }
         }
       } catch {
