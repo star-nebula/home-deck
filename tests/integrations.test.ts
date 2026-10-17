@@ -30,10 +30,27 @@ const normalizePomodoro = (raw: Record<string, unknown>): PomodoroConfig => pomo
 
 const VAULT = process.env.HOME_PAGES_TEST_VAULT ?? "D:/data/obsidian_pls/duowei-stress-vault";
 let failures = 0;
+let skippedSuites = 0;
 
 function check(name: string, ok: boolean, detail?: unknown): void {
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${ok ? "" : ` → ${JSON.stringify(detail)}`}`);
   if (!ok) failures += 1;
+}
+
+function skip(suite: string, reason: string): void {
+  console.log(`SKIP ${suite} — ${reason}`);
+  skippedSuites += 1;
+}
+
+const vaultReady = await fs.stat(VAULT).then(() => true, () => false);
+const vaultMissingReason = `夹具库不存在：${VAULT}（用 HOME_PAGES_TEST_VAULT 指定）`;
+
+async function runWithVault(suite: string, fn: () => Promise<void>): Promise<void> {
+  if (!vaultReady) {
+    skip(suite, vaultMissingReason);
+    return;
+  }
+  await fn();
 }
 
 async function testDuowei(): Promise<void> {
@@ -397,7 +414,11 @@ async function testUserCustomWidgets(): Promise<void> {
         }
       ]
     },
-    app: { vault: fakeVault, workspace: { getLeaf: () => ({ openFile: async () => {} }) } },
+    app: {
+      vault: fakeVault,
+      workspace: { getLeaf: () => ({ openFile: async () => {} }) },
+      fileManager: { trashFile: async (file: TFile) => { mockFiles.delete(file.path); } }
+    },
     api: {
       registerWidget: (wdef: { kind: string }) => {
         registeredKinds.add(wdef.kind);
@@ -614,12 +635,17 @@ function testMedia(): void {
 }
 
 async function testOpmlAndFollow(): Promise<void> {
-  const followOpmlPath = "C:/Users/加加/Desktop/follow.opml";
+  const followOpmlPath = process.env.HOME_PAGES_TEST_OPML;
   let opmlContent = "";
-  try {
-    opmlContent = await fs.readFile(followOpmlPath, "utf8");
-  } catch (err) {
-    console.warn("Could not read follow.opml:", err);
+  if (followOpmlPath) {
+    try {
+      opmlContent = await fs.readFile(followOpmlPath, "utf8");
+    } catch (err) {
+      console.warn("Could not read follow.opml:", err);
+    }
+  }
+  if (!opmlContent) {
+    skip("follow.opml 60-feed fixture checks", "未设置 HOME_PAGES_TEST_OPML 或文件读不到");
   }
 
   if (opmlContent) {
@@ -765,10 +791,11 @@ testWeatherHelpers();
 testMedia();
 await testOpmlAndFollow();
 await testMediaCachingAndProgress();
-await testDuowei();
+await runWithVault("testDuowei", testDuowei);
 await testDigest();
-await testWechat();
+await runWithVault("testWechat", testWechat);
 await testDuoweiInbox();
-await testAnnotations();
-console.log(failures === 0 ? "ALL PASSED" : `${failures} FAILED`);
+await runWithVault("testAnnotations", testAnnotations);
+const summary = failures === 0 ? "ALL PASSED" : `${failures} FAILED`;
+console.log(skippedSuites > 0 ? `${summary}（${skippedSuites} 个套件因缺夹具被跳过）` : summary);
 process.exit(failures === 0 ? 0 : 1);
