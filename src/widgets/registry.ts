@@ -1,6 +1,7 @@
 import type { WidgetInstance, WidgetKind } from "../types";
 import { createId } from "../utils/id";
 import { annotationsWidget } from "./annotations";
+import { allNotesWidget } from "./allnotes";
 import { countdownWidget } from "./countdown";
 import { diaryWidget } from "./diary";
 import { duoweiWidget } from "./duowei";
@@ -35,6 +36,7 @@ const DEFINITIONS: AnyWidgetDefinition[] = [
   kanbanWidget,
   habitWidget,
   diaryWidget,
+  allNotesWidget,
   statsWidget,
   onThisDayWidget,
   noteWidget,

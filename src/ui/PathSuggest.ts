@@ -33,7 +33,9 @@ export class PathSuggest extends AbstractInputSuggest<TAbstractFile> {
       }
     };
     walk(this.app.vault.getRoot());
-    return result.sort((a, b) => rank(a.path, lower) - rank(b.path, lower) || a.path.localeCompare(b.path)).slice(0, 40);
+    // 接受文件夹的输入框里文件夹排前面：否则 40 条上限会被笔记占满，选不到文件夹。
+    const typeRank = (item: TAbstractFile): number => (wantFolders && item instanceof TFolder ? 0 : 1);
+    return result.sort((a, b) => typeRank(a) - typeRank(b) || rank(a.path, lower) - rank(b.path, lower) || a.path.localeCompare(b.path)).slice(0, 40);
   }
 
   renderSuggestion(value: TAbstractFile, el: HTMLElement): void {

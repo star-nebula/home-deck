@@ -8,6 +8,7 @@ export type BuiltinWidgetKind =
   | "quote"
   | "habit"
   | "diary"
+  | "allnotes"
   | "kanban"
   | "stats"
   | "onthisday"

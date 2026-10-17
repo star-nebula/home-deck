@@ -808,6 +808,182 @@
   margin-top: 2px;
 }
 
+/* ---- 全部笔记组件 ----------------------------------------------------------- */
+
+/* 与日记同构：芯片行 + 过滤框常驻顶部，分组区自己滚。 */
+.hp-allnotes {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 10px 12px 12px;
+}
+
+.hp-allnotes-search-wrap {
+  display: flex;
+  flex: none;
+}
+
+.hp-allnotes-search {
+  width: 100%;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--hp-border);
+  border-radius: 999px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 12px;
+}
+
+.hp-allnotes-search:focus {
+  border-color: var(--hp-accent);
+  outline: none;
+}
+
+.hp-allnotes-groups {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.hp-allnotes-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 8px 3px;
+  cursor: pointer;
+}
+
+.hp-allnotes-group-head:first-child {
+  padding-top: 2px;
+}
+
+.hp-allnotes-group-toggle {
+  display: inline-flex;
+  flex: none;
+  color: var(--hp-muted);
+}
+
+.hp-allnotes-group-toggle svg {
+  width: 12px;
+  height: 12px;
+}
+
+.hp-allnotes-group-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--hp-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hp-allnotes-group-count {
+  flex: none;
+  color: color-mix(in srgb, var(--hp-muted) 60%, transparent);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hp-allnotes-row {
+  padding: 7px 8px;
+}
+
+.hp-allnotes-row .hp-list-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.hp-allnotes-mocs {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--hp-muted) 70%, transparent);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 简介允许两行，超出截断（与「知识工作台」全部笔记一致）。 */
+.hp-allnotes-abstract {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 2px;
+  color: color-mix(in srgb, var(--text-muted) 42%, var(--background-primary));
+  font-size: 11px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* 设置面板的排除文件夹清单：整棵子树排除，选而不是打字。 */
+.hp-allnotes-excludes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: -6px 0 10px;
+}
+
+.hp-allnotes-excludes-none {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.hp-allnotes-exclude-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--hp-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--hp-accent) 5%, var(--background-primary));
+  font-size: 12px;
+}
+
+.hp-allnotes-exclude-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--text-muted);
+}
+
+.hp-allnotes-exclude-path {
+  overflow: hidden;
+  flex: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hp-allnotes-exclude-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.hp-allnotes-exclude-remove:hover {
+  background: color-mix(in srgb, var(--text-error) 12%, transparent);
+  color: var(--text-error);
+}
+
+.hp-allnotes-exclude-icon svg,
+.hp-allnotes-exclude-remove svg {
+  width: 13px;
+  height: 13px;
+}
+
 /* ---- 欢迎横幅 --------------------------------------------------------------- */
 
 .hp-card-hero {
