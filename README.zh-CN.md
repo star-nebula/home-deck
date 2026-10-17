@@ -8,7 +8,7 @@
 > [!IMPORTANT]
 > **关于本项目：** 本项目 fork 自 [jepicaju862-lab/home-pages](https://github.com/jepicaju862-lab/home-pages)（GPL-3.0 协议）。由于原项目长期未回应 issue 与 PR，自即日起由 [star-nebula](https://github.com/star-nebula) 独立维护，原作的贡献归属于原作者。插件 id 为 `home-pages-star-nebula`，可与原版插件共存。原版用户迁移方法：重新安装本版本后，把 `.obsidian/plugins/home-pages/data.json` 复制到 `.obsidian/plugins/home-pages-star-nebula/` 即可保留原有布局。
 
-- **发布产物：** [GitHub Releases](https://github.com/star-nebula/home-pages/releases) —— 本 fork 的首个发布为 `v0.4.0`；从上游仓库继承的 tag（`v0.3.1` 及更早）在本仓库只是 tag，不含任何发布产物。
+- **发布产物：** [GitHub Releases](https://github.com/star-nebula/home-pages/releases) —— 本 fork **尚未发布任何 Release**；从上游仓库继承的 tag（`v0.3.1` 及更早）在本仓库只是 tag，不含任何发布产物。
 - **最低 Obsidian 版本：** 1.7.2
 - **支持平台：** 桌面端与移动端（iOS / Android）
 - **开源协议：** [GNU 通用公共许可证 v3.0](LICENSE)
@@ -131,16 +131,20 @@ api.ui.renderEmpty(containerEl, { message: "暂无数据" });
 
 ### 方式二：手动安装
 
-1. 前往 [GitHub Releases 页面](https://github.com/star-nebula/home-pages/releases) 下载最新版本产物：
-   - `main.js`
-   - `manifest.json`
-   - `styles.css`
+1. 本 fork 暂无 Release 产物可下载，请从源码构建：
+   ```bash
+   git clone https://github.com/star-nebula/home-pages.git
+   cd home-pages
+   npm ci
+   npm run build
+   ```
+   构建后仓库根目录即得到所需的三个文件：`main.js`、`manifest.json`、`styles.css`。
 2. 在您的 Obsidian 库目录中进入插件文件夹（文件夹名建议与插件 id 一致）：
    ```text
    <vault>/.obsidian/plugins/home-pages-star-nebula/
    ```
    （若目录不存在请手动新建 `home-pages-star-nebula` 文件夹）
-3. 将下载的 3 个文件放入该目录。
+3. 将上述 3 个文件放入该目录。
 4. 在 Obsidian「**设置 → 第三方插件**」列表中重新加载并启用 **Home Pages**。
 
 ---
