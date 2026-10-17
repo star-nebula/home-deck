@@ -25,3 +25,7 @@ tests/.out/
 home-pages*.zip
 
 .dev-target
+
+# Agent tooling files generated per worktree (memory hook, tool ignore list)
+AGENTS.md
+.zcodeignore
