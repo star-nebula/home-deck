@@ -5,6 +5,7 @@
 
 # npm dependencies
 node_modules/
+.worktrees/
 
 # Compiled plugin bundle (uploaded to GitHub Releases)
 main.js

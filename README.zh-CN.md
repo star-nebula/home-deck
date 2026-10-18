@@ -207,6 +207,8 @@ api.ui.renderEmpty(containerEl, { message: "暂无数据" });
 
 ## 🧑‍💻 开发与贡献
 
+工作区分工、开发目标与手动部署流程见 [开发与本地部署](docs/development.md)。
+
 欢迎社区开发者提交 Pull Request 或报告 Issue！
 
 ```bash
