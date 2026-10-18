@@ -8,7 +8,7 @@ A modern, modular, and responsive homepage dashboard plugin for Obsidian. Built 
 > [!IMPORTANT]
 > **About this fork:** This project is a fork of [jepicaju862-lab/home-pages](https://github.com/jepicaju862-lab/home-pages) (GPL-3.0), maintained independently by [star-nebula](https://github.com/star-nebula) since the original project became unresponsive to issues and pull requests. All credit for the original work goes to the original author. Plugin id: `home-pages-star-nebula` — it can be installed alongside the original plugin. Existing users of the original plugin need to reinstall this version and copy `data.json` from `.obsidian/plugins/home-pages/` to `.obsidian/plugins/home-pages-star-nebula/` to migrate their layouts.
 
-- **Current release:** [v0.3.1](https://github.com/star-nebula/home-pages/releases/tag/v0.3.1)
+- **Releases:** [GitHub Releases](https://github.com/star-nebula/home-pages/releases) — no release has been published from this fork yet. Tags inherited from the upstream repository (`v0.3.1` and earlier) exist here as tags only and carry no release assets.
 - **Minimum Obsidian version:** 1.7.2
 - **Supported platforms:** Desktop and Obsidian Mobile (iOS / Android)
 - **License:** [GNU General Public License v3.0](LICENSE)
@@ -126,25 +126,25 @@ Users can build custom widgets directly in JavaScript without creating separate 
 
 ## 📥 Installation
 
-### Method 1: Obsidian Community Plugins (Recommended)
+### Method 1: Obsidian Community Plugins
 
-Once available in the official Obsidian Community Plugins directory:
-1. In Obsidian, go to **Settings → Community plugins**.
-2. Turn off **Restricted mode** and click **Browse**.
-3. Search for **Home Pages**.
-4. Click **Install**, then click **Enable**.
+This fork is **not** published in the official community directory. Searching **Home Pages** under **Settings → Community plugins → Browse** installs the original upstream plugin, not this one. Use Method 2 (or build from source, see Development) to get this fork.
 
 ### Method 2: Manual Installation
 
-1. Download the latest release assets from the [GitHub Releases](https://github.com/star-nebula/home-pages/releases) page:
-   - `main.js`
-   - `manifest.json`
-   - `styles.css`
-2. Locate or create your plugin folder inside your vault:
-   ```text
-   <vault>/.obsidian/plugins/home-pages/
+1. This fork has no release assets to download yet, so build them from source:
+   ```bash
+   git clone https://github.com/star-nebula/home-pages.git
+   cd home-pages
+   npm ci
+   npm run build
    ```
-3. Copy the downloaded files into that directory.
+   The repository root then contains the three files you need: `main.js`, `manifest.json`, `styles.css`.
+2. Locate or create your plugin folder inside your vault (the folder name should match the plugin id):
+   ```text
+   <vault>/.obsidian/plugins/home-pages-star-nebula/
+   ```
+3. Copy those three files into that directory.
 4. Reload Obsidian and enable **Home Pages** in **Settings → Community plugins**.
 
 ---
