@@ -1,27 +1,51 @@
-import { App, Setting, WorkspaceLeaf } from "obsidian";
-import { normalizeWith, type WidgetDefinition } from "./types";
+import { App, normalizePath, Setting, WorkspaceLeaf } from "obsidian";
+import { addPathSetting, addTextareaSetting } from "../ui/settingHelpers";
+import { normalizeWith, toStringList, type WidgetDefinition } from "./types";
+
+type KnowledgeMapScopeMode = "knowledge" | "knowledge-creation" | "vault" | "custom";
 
 export interface KnowledgeMapConfig extends Record<string, unknown> {
-  /** 当前点亮的统计分区；空串 = 默认知识库范围。 */
+  /** 图谱默认范围。 */
+  scopeMode: KnowledgeMapScopeMode;
+  /** scopeMode = custom 时使用。 */
+  customFolder: string;
+  /** 不进入统计与图谱的文件夹（含子文件夹）。 */
+  excludeFolders: string[];
+  /** 当前点亮的统计分区；空串 = 当前范围的汇总。 */
   area: string;
-  /** 是否按目录生成原生图谱颜色分组。 */
+  /** 是否显示总计与分区芯片。 */
+  showStats: boolean;
+  /** 是否在统计芯片上显示篇数。 */
+  showCounts: boolean;
+  /** 是否按分区生成原生图谱颜色分组。 */
   colorize: boolean;
 }
 
 const DEFAULTS: KnowledgeMapConfig = {
+  scopeMode: "knowledge",
+  customFolder: "",
+  excludeFolders: [],
   area: "",
+  showStats: true,
+  showCounts: true,
   colorize: true
 };
 
-const KNOWLEDGE_SCOPE_PATHS = [
-  "Knowledge/AI",
-  "Knowledge/Engineering",
-  "Knowledge/Methods",
-  "Knowledge/Life",
-  "Knowledge/_mocs"
+const KNOWLEDGE_AREAS = [
+  { label: "AI", path: "Knowledge/AI" },
+  { label: "Engineering", path: "Knowledge/Engineering" },
+  { label: "Methods", path: "Knowledge/Methods" },
+  { label: "Life", path: "Knowledge/Life" },
+  { label: "MOC", path: "Knowledge/_mocs" }
+];
+
+const CREATION_AREAS = [
+  { label: "作坊", path: "作坊" },
+  { label: "档案", path: "档案" }
 ];
 
 const GRAPH_PALETTE = [0xe05252, 0x52a8e0, 0x7bd86b, 0xd86bd8, 0xe0a852, 0x52d8d0, 0xb0b0b0];
+const EMPTY_SCOPE_QUERY = 'path:"__home_pages_knowledge_map_empty_scope__"';
 
 interface KnowledgeArea {
   label: string;
@@ -50,57 +74,126 @@ interface GraphHandle {
   dispose(): void;
 }
 
-/** 单分区查询词：与工作台原模块使用同一套 path 子串语义。 */
+interface ResolvedScope {
+  mode: KnowledgeMapScopeMode;
+  paths: string[];
+  allVault: boolean;
+  emptyCustom: boolean;
+}
+
 function pathQuery(path: string): string {
   return `path:"${path.replace(/"/g, '\\"')}"`;
 }
 
-/** 默认只点亮知识库五个分区；统计中的作坊、档案仅在点芯片时进入图谱。 */
-const DEFAULT_GRAPH_QUERY = KNOWLEDGE_SCOPE_PATHS.map(pathQuery).join(" OR ");
+function isWithinPath(filePath: string, folder: string): boolean {
+  return filePath === folder || filePath.startsWith(`${folder}/`);
+}
 
-function directMarkdownCounts(app: App): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const file of app.vault.getMarkdownFiles()) {
-    const path = file.parent?.path;
-    if (path) counts.set(path, (counts.get(path) ?? 0) + 1);
+function isExcluded(filePath: string, excludes: string[]): boolean {
+  return excludes.some((folder) => folder && isWithinPath(filePath, folder));
+}
+
+function normalizeFolders(folders: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of folders) {
+    const folder = normalizePath(String(raw ?? "").trim()).replace(/\/+$/g, "");
+    if (!folder || seen.has(folder)) continue;
+    seen.add(folder);
+    result.push(folder);
   }
-  return counts;
+  return result;
 }
 
-function knowledgeAreas(app: App): KnowledgeArea[] {
-  const counts = directMarkdownCounts(app);
-  const count = (path: string): number => counts.get(path) ?? 0;
-  const knowledgeTotal =
-    count("Knowledge") +
-    KNOWLEDGE_SCOPE_PATHS.reduce((total, path) => total + count(path), 0);
-  return [
-    { label: "总计", path: "", count: knowledgeTotal },
-    { label: "AI", path: "Knowledge/AI", count: count("Knowledge/AI") },
-    { label: "Engineering", path: "Knowledge/Engineering", count: count("Knowledge/Engineering") },
-    { label: "Methods", path: "Knowledge/Methods", count: count("Knowledge/Methods") },
-    { label: "Life", path: "Knowledge/Life", count: count("Knowledge/Life") },
-    { label: "MOC", path: "Knowledge/_mocs", count: count("Knowledge/_mocs") },
-    { label: "作坊", path: "作坊", count: count("作坊") },
-    { label: "档案", path: "档案", count: count("档案") }
-  ];
+function resolveScope(config: KnowledgeMapConfig): ResolvedScope {
+  if (config.scopeMode === "vault") {
+    return { mode: "vault", paths: [], allVault: true, emptyCustom: false };
+  }
+  if (config.scopeMode === "custom") {
+    const folder = normalizePath(config.customFolder.trim()).replace(/\/+$/g, "");
+    return { mode: "custom", paths: folder ? [folder] : [], allVault: false, emptyCustom: !folder };
+  }
+  const paths = (config.scopeMode === "knowledge-creation"
+    ? [...KNOWLEDGE_AREAS, ...CREATION_AREAS]
+    : KNOWLEDGE_AREAS
+  ).map((area) => area.path);
+  return { mode: config.scopeMode, paths, allVault: false, emptyCustom: false };
 }
 
-function colorGroups(app: App): GraphColorGroup[] {
-  const dirs = new Set<string>();
-  for (const file of app.vault.getMarkdownFiles()) {
-    if (file.path.startsWith("Knowledge/")) {
-      const parts = file.path.split("/");
-      if (parts.length >= 3) dirs.add(`Knowledge/${parts[1]}`);
-    } else if (file.path.startsWith("作坊/")) {
-      dirs.add("作坊");
-    } else if (file.path.startsWith("档案/")) {
-      dirs.add("档案");
+function scopeFiles(app: App, scope: ResolvedScope, excludes: string[]): string[] {
+  return app.vault.getMarkdownFiles()
+    .map((file) => file.path)
+    .filter((path) => (scope.allVault || scope.paths.some((folder) => isWithinPath(path, folder))) && !isExcluded(path, excludes));
+}
+
+function countWithin(files: string[], folder: string): number {
+  return files.filter((path) => isWithinPath(path, folder)).length;
+}
+
+function dynamicAreaPath(filePath: string, scope: ResolvedScope): string {
+  if (scope.mode === "vault") {
+    const parts = filePath.split("/");
+    return parts.length > 1 ? parts[0] : "";
+  }
+  const root = scope.paths[0];
+  if (!root || !filePath.startsWith(`${root}/`)) return "";
+  const relative = filePath.slice(root.length + 1);
+  const parts = relative.split("/");
+  return parts.length > 1 ? `${root}/${parts[0]}` : "";
+}
+
+function areaLabel(path: string): string {
+  return path.split("/").pop() ?? path;
+}
+
+function knowledgeAreas(app: App, config: KnowledgeMapConfig): KnowledgeArea[] {
+  const scope = resolveScope(config);
+  const excludes = config.excludeFolders;
+  const files = scopeFiles(app, scope, excludes);
+  const areas: KnowledgeArea[] = [{ label: "总计", path: "", count: files.length }];
+  const fixed = scope.mode === "knowledge-creation"
+    ? [...KNOWLEDGE_AREAS, ...CREATION_AREAS]
+    : scope.mode === "knowledge"
+      ? KNOWLEDGE_AREAS
+      : [];
+
+  if (fixed.length > 0) {
+    for (const area of fixed) {
+      areas.push({ ...area, count: countWithin(files, area.path) });
     }
+    return areas;
   }
-  return [...dirs].sort().map((path, index) => ({
-    query: pathQuery(path),
-    color: { a: 1, rgb: GRAPH_PALETTE[index % GRAPH_PALETTE.length] }
-  }));
+
+  const counts = new Map<string, number>();
+  for (const path of files) {
+    const areaPath = dynamicAreaPath(path, scope);
+    if (areaPath) counts.set(areaPath, (counts.get(areaPath) ?? 0) + 1);
+  }
+  for (const [path, count] of [...counts].sort(([a], [b]) => a.localeCompare(b, "zh-Hans-CN"))) {
+    areas.push({ label: areaLabel(path), path, count });
+  }
+  return areas;
+}
+
+function graphQuery(scope: ResolvedScope, excludes: string[], areaPath = ""): string {
+  if (scope.emptyCustom) return EMPTY_SCOPE_QUERY;
+  const clauses: string[] = [];
+  if (areaPath) {
+    clauses.push(pathQuery(areaPath));
+  } else if (!scope.allVault && scope.paths.length > 0) {
+    clauses.push(scope.paths.map(pathQuery).join(" OR "));
+  }
+  for (const folder of excludes) clauses.push(`-${pathQuery(folder)}`);
+  return clauses.join(" ").trim();
+}
+
+function colorGroupsForAreas(areas: KnowledgeArea[]): GraphColorGroup[] {
+  return areas
+    .filter((area) => area.path)
+    .map((area, index) => ({
+      query: pathQuery(area.path),
+      color: { a: 1, rgb: GRAPH_PALETTE[index % GRAPH_PALETTE.length] }
+    }));
 }
 
 function createGraphLeaf(app: App): WorkspaceLeaf {
@@ -116,7 +209,7 @@ async function mountNativeGraph(
   app: App,
   host: HTMLElement,
   initialQuery: string,
-  colorize: boolean
+  groups: GraphColorGroup[]
 ): Promise<GraphHandle> {
   const leaf = createGraphLeaf(app);
   let disposed = false;
@@ -125,7 +218,6 @@ async function mountNativeGraph(
   let resizeObserver: ResizeObserver | null = null;
   let resizeFrame = 0;
   let resizeTimer = 0;
-  const groups = colorize ? colorGroups(app) : [];
 
   const options = (): { search: string; colorGroups: GraphColorGroup[] } => ({
     search: query,
@@ -200,67 +292,91 @@ async function mountNativeGraph(
   };
 }
 
-function activeLabel(areas: KnowledgeArea[], path: string): string {
-  return areas.find((area) => area.path === path)?.label ?? "知识库";
+function scopeSummary(config: KnowledgeMapConfig): string {
+  if (config.scopeMode === "vault") return "全库";
+  if (config.scopeMode === "custom") return config.customFolder.trim() || "自定义范围";
+  return config.scopeMode === "knowledge-creation" ? "知识库与创作区" : "知识库";
+}
+
+function activeLabel(areas: KnowledgeArea[], path: string, config: KnowledgeMapConfig): string {
+  return path ? areas.find((area) => area.path === path)?.label ?? scopeSummary(config) : scopeSummary(config);
 }
 
 export const knowledgeMapWidget: WidgetDefinition<KnowledgeMapConfig> = {
   kind: "knowledgemap",
   name: "知识地图",
-  description: "知识库统计芯片 + Obsidian 原生图谱，点击分区即时过滤；自动按目录配色，保留原生拖拽、缩放与点击打开。",
+  description: "可配置范围的原生图谱：分区统计、即时过滤、排除目录与自动配色，保留缩放、拖拽和点击打开。",
   icon: "network",
   accent: "#0ea5e9",
   defaultSize: { w: 8, h: 14 },
   liveRefresh: false,
-  defaultConfig: () => ({ ...DEFAULTS }),
+  defaultConfig: () => ({ ...DEFAULTS, excludeFolders: [] }),
   normalizeConfig: (raw) => {
     const config = normalizeWith(DEFAULTS, raw);
+    config.scopeMode =
+      config.scopeMode === "knowledge-creation" || config.scopeMode === "vault" || config.scopeMode === "custom"
+        ? config.scopeMode
+        : "knowledge";
+    config.customFolder = config.customFolder.trim();
+    config.excludeFolders = normalizeFolders(toStringList(raw.excludeFolders));
     config.area = typeof config.area === "string" ? config.area : "";
+    config.showStats = config.showStats === true;
+    config.showCounts = config.showCounts === true;
     config.colorize = config.colorize === true;
     return config;
   },
 
   render(body, ctx) {
     const { app, config } = ctx;
-    const root = body.createDiv({ cls: "hp-knowledge-map" });
-    const statsHost = root.createDiv({ cls: "hp-km-stats" });
-    const graphHost = root.createDiv({ cls: "hp-km-graph", attr: { "aria-label": "知识地图原生图谱" } });
-    let activePath = config.area;
+    const scope = resolveScope(config);
+    const initialAreas = knowledgeAreas(app, config);
+    let activePath = initialAreas.some((area) => area.path && area.path === config.area) ? config.area : "";
     let graphHandle: GraphHandle | null = null;
-    let appliedQuery = activePath ? pathQuery(activePath) : DEFAULT_GRAPH_QUERY;
+    let appliedQuery = graphQuery(scope, config.excludeFolders, activePath);
     let statsTimer = 0;
+    const root = body.createDiv({ cls: "hp-knowledge-map" });
+    const statsHost = config.showStats ? root.createDiv({ cls: "hp-km-stats" }) : null;
+    const graphHost = root.createDiv({ cls: "hp-km-graph", attr: { "aria-label": "知识地图原生图谱" } });
+
+    const setSubtitle = (areas: KnowledgeArea[]): void => {
+      ctx.setSubtitle(`${activeLabel(areas, activePath, config)} · 原生图谱`);
+    };
 
     const applyFilter = (nextPath: string): void => {
       activePath = nextPath;
-      appliedQuery = nextPath ? pathQuery(nextPath) : DEFAULT_GRAPH_QUERY;
+      appliedQuery = graphQuery(scope, config.excludeFolders, nextPath);
       graphHandle?.setFilter(appliedQuery);
     };
 
     const paintStats = (): void => {
-      const areas = knowledgeAreas(app);
+      const areas = knowledgeAreas(app, config);
+      if (activePath && !areas.some((area) => area.path === activePath)) applyFilter("");
+      setSubtitle(areas);
+      if (!statsHost) return;
       statsHost.empty();
       for (const area of areas) {
         const chip = statsHost.createEl("button", {
           cls: `hp-km-chip${area.path === activePath ? " is-active" : ""}`,
           attr: {
             type: "button",
-            title: area.path ? `图谱只看 ${area.label}（再点一次恢复全部）` : "恢复默认知识库范围"
+            title: area.path ? `图谱只看 ${area.label}（再点一次恢复汇总）` : "恢复范围汇总"
           }
         });
-        chip.createSpan({ text: area.label === "总计" ? `共 ${area.count} 篇` : area.label });
-        if (area.path) chip.createSpan({ cls: "hp-km-chip-count", text: String(area.count) });
+        const totalLabel = config.showCounts ? `共 ${area.count} 篇` : "全部";
+        chip.createSpan({ text: area.path ? area.label : totalLabel });
+        if (area.path && config.showCounts) {
+          chip.createSpan({ cls: "hp-km-chip-count", text: String(area.count) });
+        }
         chip.addEventListener("click", () => {
           const next = area.path && activePath === area.path ? "" : area.path;
           applyFilter(next);
           void ctx.saveConfig({ area: next });
           paintStats();
-          ctx.setSubtitle(`${area.label === "总计" ? "知识库" : activeLabel(areas, next)} · 原生图谱`);
         });
       }
     };
 
     paintStats();
-    ctx.setSubtitle(`${activePath ? activeLabel(knowledgeAreas(app), activePath) : "知识库"} · 原生图谱`);
     ctx.addHeaderAction("refresh-cw", "刷新知识地图", () => ctx.rerender());
 
     const scheduleStats = (): void => {
@@ -280,7 +396,8 @@ export const knowledgeMapWidget: WidgetDefinition<KnowledgeMapConfig> = {
       for (const ref of refs) app.vault.offref(ref);
     });
 
-    void mountNativeGraph(app, graphHost, appliedQuery, config.colorize)
+    const groups = config.colorize ? colorGroupsForAreas(initialAreas) : [];
+    void mountNativeGraph(app, graphHost, appliedQuery, groups)
       .then((handle) => {
         if (!ctx.isAlive()) {
           handle.dispose();
@@ -302,11 +419,73 @@ export const knowledgeMapWidget: WidgetDefinition<KnowledgeMapConfig> = {
   },
 
   renderSettings(container, ctx) {
+    const { app, config } = ctx;
+    new Setting(container)
+      .setName("图谱范围")
+      .setDesc("控制默认进入图谱的文件夹；自定义范围可指向任意目录。")
+      .addDropdown((dropdown) => dropdown
+        .addOptions({
+          knowledge: "知识库",
+          "knowledge-creation": "知识库 + 作坊 / 档案",
+          vault: "全库",
+          custom: "自定义文件夹"
+        })
+        .setValue(config.scopeMode)
+        .onChange((value) => {
+          const scopeMode = value === "knowledge-creation" || value === "vault" || value === "custom" ? value : "knowledge";
+          ctx.update({ scopeMode, area: "" });
+          ctx.refresh();
+        }));
+
+    if (config.scopeMode === "custom") {
+      addPathSetting(container, app, {
+        name: "自定义文件夹",
+        desc: "图谱与统计只扫描这个文件夹（含子文件夹）。",
+        value: config.customFolder,
+        placeholder: "例如 Knowledge/AI",
+        suggest: { files: false, folders: true },
+        onChange: (value) => ctx.update({ customFolder: value, area: "" }),
+        onCommit: () => ctx.refresh()
+      });
+    }
+
+    addTextareaSetting(container, {
+      name: "排除文件夹",
+      desc: "一行一个路径，路径及其子文件夹不会进入统计或图谱。",
+      value: config.excludeFolders.join("\n"),
+      placeholder: "例如 Knowledge/_mocs\nArchive",
+      rows: 3,
+      onChange: (value) => ctx.update({ excludeFolders: normalizeFolders(toStringList(value)) })
+    });
+
+    const areas = knowledgeAreas(app, config);
+    const areaOptions: Record<string, string> = { "": "范围汇总" };
+    for (const area of areas) {
+      if (!area.path) continue;
+      areaOptions[area.path] = `${area.label}（${area.count} 篇）`;
+    }
+    if (config.area && !(config.area in areaOptions)) areaOptions[config.area] = `${config.area}（当前不存在）`;
+    new Setting(container)
+      .setName("默认分区")
+      .setDesc("打开组件时默认点亮的分区；关闭统计芯片后仍按此分区过滤。")
+      .addDropdown((dropdown) => dropdown
+        .addOptions(areaOptions)
+        .setValue(config.area)
+        .onChange((value) => ctx.update({ area: value })));
+
+    new Setting(container)
+      .setName("统计芯片")
+      .setDesc("显示范围汇总与分区芯片；关闭后图谱仍按默认分区过滤。")
+      .addToggle((toggle) => toggle.setValue(config.showStats).onChange((value) => ctx.update({ showStats: value })));
+
+    new Setting(container)
+      .setName("芯片计数")
+      .setDesc("在统计芯片上显示篇数；关闭后保留分区筛选。")
+      .addToggle((toggle) => toggle.setValue(config.showCounts).onChange((value) => ctx.update({ showCounts: value })));
+
     new Setting(container)
       .setName("自动配色")
-      .setDesc("按 knowledge 二级目录、作坊与档案生成原生图谱颜色分组。")
-      .addToggle((toggle) => toggle
-        .setValue(ctx.config.colorize)
-        .onChange((value) => ctx.update({ colorize: value })));
+      .setDesc("按当前范围的分区生成原生图谱颜色分组。")
+      .addToggle((toggle) => toggle.setValue(config.colorize).onChange((value) => ctx.update({ colorize: value })));
   }
 };

@@ -307,7 +307,22 @@ function testRegistry(): void {
   const before = listWidgetDefinitions().length;
   const knowledgeMap = getWidgetDefinition("knowledgemap");
   check("knowledge map widget registered", knowledgeMap?.name === "知识地图", knowledgeMap);
-  check("knowledge map uses native graph defaults", knowledgeMap?.defaultConfig().colorize === true && knowledgeMap.defaultSize.h >= 10);
+  const knowledgeMapDefaults = knowledgeMap?.defaultConfig();
+  check(
+    "knowledge map uses native graph defaults",
+    knowledgeMapDefaults?.colorize === true && knowledgeMapDefaults.scopeMode === "knowledge" && knowledgeMapDefaults.showStats === true && knowledgeMap.defaultSize.h >= 10
+  );
+  const normalizedMap = knowledgeMap?.normalizeConfig?.({
+    scopeMode: "unknown",
+    excludeFolders: "Archive\n\nKnowledge/_mocs",
+    showStats: false,
+    showCounts: false
+  });
+  check(
+    "knowledge map normalizes range and toggles",
+    normalizedMap?.scopeMode === "knowledge" && normalizedMap.excludeFolders.length === 2 && normalizedMap.showStats === false && normalizedMap.showCounts === false,
+    normalizedMap
+  );
   const events: string[] = [];
   const off = onRegistryChange((kind, registered) => events.push(`${kind}:${registered}`));
   const unregister = registerWidget({
