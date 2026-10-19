@@ -305,6 +305,9 @@ async function testAnnotations(): Promise<void> {
 
 function testRegistry(): void {
   const before = listWidgetDefinitions().length;
+  const knowledgeMap = getWidgetDefinition("knowledgemap");
+  check("knowledge map widget registered", knowledgeMap?.name === "知识地图", knowledgeMap);
+  check("knowledge map uses native graph defaults", knowledgeMap?.defaultConfig().colorize === true && knowledgeMap.defaultSize.h >= 10);
   const events: string[] = [];
   const off = onRegistryChange((kind, registered) => events.push(`${kind}:${registered}`));
   const unregister = registerWidget({

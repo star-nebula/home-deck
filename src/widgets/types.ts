@@ -19,6 +19,8 @@ export interface WidgetContext<C> {
   openPath(path: string, options?: { line?: number; event?: MouseEvent | KeyboardEvent; newLeaf?: boolean }): Promise<void>;
   /** 设置卡片标题栏右侧的副标题。 */
   setSubtitle(text: string): void;
+  /** 在卡片标题与右侧副标题/操作之间加入自定义标题栏内容；重绘时自动清除。 */
+  addHeaderContent(className?: string): HTMLElement;
   /** 在卡片标题栏（齿轮左侧）加一个图标按钮；重绘时自动清除。 */
   addHeaderAction(icon: string, label: string, onClick: (event: MouseEvent) => void): HTMLElement;
   /** 注册定时器；组件重绘或卸载时自动清除。 */

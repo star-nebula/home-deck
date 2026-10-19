@@ -9,6 +9,7 @@ import { habitWidget } from "./habit";
 import { heroWidget } from "./hero";
 import { insightsWidget } from "./insights";
 import { kanbanWidget } from "./kanban";
+import { knowledgeMapWidget } from "./knowledgeMap";
 import { noteWidget } from "./note";
 import { onThisDayWidget } from "./onthisday";
 import { pomodoroWidget } from "./pomodoro";
@@ -37,6 +38,7 @@ const DEFINITIONS: AnyWidgetDefinition[] = [
   habitWidget,
   diaryWidget,
   allNotesWidget,
+  knowledgeMapWidget,
   statsWidget,
   onThisDayWidget,
   noteWidget,

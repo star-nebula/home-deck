@@ -214,6 +214,18 @@
   white-space: nowrap;
 }
 
+.hp-card-header-slot {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.hp-card-header-slot:empty {
+  display: none;
+}
+
 .hp-card-icon {
   display: inline-flex;
   align-items: center;
@@ -822,7 +834,10 @@
 
 .hp-allnotes-search-wrap {
   display: flex;
-  flex: none;
+  flex: 1 1 150px;
+  max-width: 320px;
+  min-width: 96px;
+  margin-left: 2px;
 }
 
 .hp-allnotes-search {
@@ -839,6 +854,84 @@
 .hp-allnotes-search:focus {
   border-color: var(--hp-accent);
   outline: none;
+}
+
+/* ---- 知识地图组件 ----------------------------------------------------------- */
+
+.hp-knowledge-map {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 10px 12px 12px;
+}
+
+.hp-km-stats {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.hp-km-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 25px;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  box-shadow: none;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hp-km-chip:hover {
+  background: color-mix(in srgb, var(--hp-accent) 14%, var(--background-secondary));
+  color: var(--text-normal);
+}
+
+.hp-km-chip.is-active {
+  background: var(--hp-accent);
+  color: #fff;
+}
+
+.hp-km-chip-count {
+  color: color-mix(in srgb, currentColor 72%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.hp-km-graph {
+  position: relative;
+  flex: 1;
+  min-height: 180px;
+  overflow: hidden;
+  border: 1px solid var(--hp-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+}
+
+.hp-km-native-graph {
+  width: 100% !important;
+  height: 100% !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.hp-km-native-graph .view-content,
+.hp-km-native-graph .graph-view {
+  width: 100%;
+  height: 100%;
+}
+
+.hp-km-empty {
+  position: absolute;
+  inset: 0;
 }
 
 .hp-allnotes-groups {
@@ -4507,6 +4600,15 @@
   }
   .hp-card-header {
     padding: 9px 12px;
+  }
+  .hp-allnotes-search-wrap {
+    max-width: none;
+  }
+  .hp-knowledge-map {
+    padding: 8px;
+  }
+  .hp-km-graph {
+    min-height: 160px;
   }
   .hp-hero-top {
     flex-direction: column;

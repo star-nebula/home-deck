@@ -26,7 +26,8 @@ class WidgetHost {
     public widget: WidgetInstance,
     public readonly cardEl: HTMLElement,
     private readonly subtitleEl: HTMLElement,
-    private readonly actionsEl: HTMLElement
+    private readonly actionsEl: HTMLElement,
+    private readonly headerContentEl: HTMLElement
   ) {
     this.bodyEl = cardEl.createDiv({ cls: "hp-card-body" });
   }
@@ -40,6 +41,7 @@ class WidgetHost {
     this.bodyEl = body;
     this.subtitleEl.setText("");
     this.actionsEl.empty();
+    this.headerContentEl.empty();
 
     const definition = getWidgetDefinition(this.widget.kind);
     if (!definition) {
@@ -70,6 +72,11 @@ class WidgetHost {
       openPath: (path, options) => openPath(view.app, path, options),
       setSubtitle: (text) => {
         if (token === this.token) this.subtitleEl.setText(text);
+      },
+      addHeaderContent: (className) => {
+        const el = createDiv({ cls: className ?? "hp-card-header-content" });
+        this.headerContentEl.appendChild(el);
+        return el;
       },
       addHeaderAction: (icon, label, onClick) => {
         const button = this.actionsEl.createEl("button", { cls: "hp-card-action clickable-icon", attr: { type: "button", "aria-label": label, title: label } });
@@ -301,6 +308,7 @@ export class HomeView extends ItemView {
     setIcon(grip, "grip-vertical");
     setIcon(titleWrap.createSpan({ cls: "hp-card-icon" }), definition?.icon ?? "plug");
     titleWrap.createSpan({ cls: "hp-card-title-text", text: widgetDisplayTitle(widget) });
+    const headerContent = header.createDiv({ cls: "hp-card-header-slot" });
     const right = header.createDiv({ cls: "hp-card-header-right" });
     const subtitle = right.createSpan({ cls: "hp-card-subtitle" });
     const actions = right.createSpan({ cls: "hp-card-actions" });
@@ -311,7 +319,7 @@ export class HomeView extends ItemView {
       this.openWidgetSettings(widget.id);
     });
 
-    const host = new WidgetHost(this, widget, card, subtitle, actions);
+    const host = new WidgetHost(this, widget, card, subtitle, actions, headerContent);
     this.hosts.set(widget.id, host);
     this.renderEditBar(card, widget);
     const handle = card.createDiv({

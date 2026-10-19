@@ -36,6 +36,12 @@ export class ItemView extends Component {
   registerEvent(): void {}
   register(): void {}
 }
+export class WorkspaceLeaf {
+  view: unknown;
+  constructor(public app: unknown) {}
+  async setViewState(): Promise<void> {}
+  detach(): void {}
+}
 export class Modal {
   constructor(public app: unknown) {}
   open(): void {}

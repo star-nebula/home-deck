@@ -278,6 +278,13 @@ export const allNotesWidget: WidgetDefinition<AllNotesConfig> = {
     const notes = collectNotes(app, config);
     ctx.setSubtitle(`${scope || "全库"} · ${notes.length} 篇`);
 
+    const search = ctx.addHeaderContent("hp-allnotes-search-wrap");
+    const input = search.createEl("input", {
+      cls: "hp-allnotes-search",
+      attr: { type: "text", placeholder: "过滤笔记", "aria-label": "过滤笔记" }
+    });
+    input.value = view.keyword;
+
     if (notes.length === 0) {
       root.createDiv({ cls: "hp-empty", text: scope ? `${scope} 下还没有笔记` : "库里还没有笔记" });
       return;
@@ -308,13 +315,6 @@ export const allNotesWidget: WidgetDefinition<AllNotesConfig> = {
       const count = area === MOC_AREA ? mocCount : notes.filter((note) => note.area === area).length;
       makeChip(area, area, count);
     }
-
-    const search = root.createDiv({ cls: "hp-allnotes-search-wrap" });
-    const input = search.createEl("input", {
-      cls: "hp-allnotes-search",
-      attr: { type: "text", placeholder: "按标题 / 文件名 / 子分类 / 所属 MOC 过滤", "aria-label": "过滤笔记" }
-    });
-    input.value = view.keyword;
 
     const pane = root.createDiv({ cls: "hp-allnotes-groups" });
 
