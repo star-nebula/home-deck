@@ -850,7 +850,7 @@ input.hp-allnotes-search[type="text"] {
   border-radius: 999px;
   background: var(--background-secondary);
   color: var(--text-normal);
-  font-size: 11px;
+  font-size: 13.5px;
 }
 
 input.hp-allnotes-search[type="text"]:focus {
