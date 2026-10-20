@@ -840,10 +840,12 @@
   margin-left: 2px;
 }
 
-.hp-allnotes-search {
+input.hp-allnotes-search[type="text"] {
   width: 100%;
-  height: 22px;
-  padding: 0 9px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0 8px;
+  box-sizing: border-box;
   border: 1px solid var(--hp-border);
   border-radius: 999px;
   background: var(--background-secondary);
@@ -851,7 +853,7 @@
   font-size: 11px;
 }
 
-.hp-allnotes-search:focus {
+input.hp-allnotes-search[type="text"]:focus {
   border-color: var(--hp-accent);
   outline: none;
 }
