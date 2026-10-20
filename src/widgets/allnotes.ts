@@ -281,7 +281,7 @@ export const allNotesWidget: WidgetDefinition<AllNotesConfig> = {
     const search = ctx.addHeaderContent("hp-allnotes-search-wrap");
     const input = search.createEl("input", {
       cls: "hp-allnotes-search",
-      attr: { type: "text", placeholder: "过滤笔记", "aria-label": "过滤笔记" }
+      attr: { type: "text", placeholder: "搜索笔记…", "aria-label": "搜索笔记" }
     });
     input.value = view.keyword;
 
