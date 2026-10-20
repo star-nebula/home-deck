@@ -842,8 +842,8 @@
 
 input.hp-allnotes-search[type="text"] {
   width: 100%;
-  height: 18px;
-  min-height: 18px;
+  height: 30px;
+  min-height: 30px;
   padding: 0 8px;
   box-sizing: border-box;
   border: 1px solid var(--hp-border);
