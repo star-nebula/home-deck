@@ -58,7 +58,7 @@ export interface HomePagesSettings {
   maxWidth: number;
   /** 只有一个页面时也显示页面标签栏。 */
   alwaysShowPageTabs: boolean;
-  /** 自定义组件脚本目录（例如 _scripts/home-pages）。 */
+  /** 自定义组件脚本目录（例如 .scripts/home-pages）。 */
   customWidgetsFolder: string;
   /** 新写的自定义组件脚本首次加载成功时，自动放到当前首页。 */
   autoAddCustomWidgets: boolean;

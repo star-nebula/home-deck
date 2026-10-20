@@ -98,7 +98,8 @@ api.ui.renderEmpty(containerEl, { message: "暂无数据" });
 除了第三方插件注册外，用户也可以直接用原生 JavaScript 编写自己的专属组件：
 
 1. 打开插件设置，找到 **「自定义组件」** 分区。
-2. 配置 **「自定义组件目录」**（如 `_scripts/home-pages/`），或直接点击 **「📄 生成示例组件模板」**，插件会自动在库中创建示例文件 `demo-widget.js` 并打开。
+2. 配置 **「自定义组件目录」**（如 `.scripts/home-pages/`），或直接点击 **「📄 生成示例组件模板」**，插件会自动在库中创建示例文件 `demo-widget.js` 并打开。
+   隐藏目录（如 `.scripts/home-pages/`）也受支持，约每 2 秒检测脚本变更；普通目录继续使用文件事件热重载。
 3. 编写符合规范的 `.js` 脚本（支持 `module.exports = { ... }` 或函数返回）：
    ```javascript
    module.exports = {

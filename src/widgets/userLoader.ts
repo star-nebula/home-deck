@@ -207,7 +207,61 @@ export class CustomWidgetManager {
     }
   >();
 
+  private readonly hiddenSources = new Map<string, string>();
+  private syncingHidden = false;
+
   constructor(private readonly plugin: HomePagesPlugin) {}
+
+  private isHiddenFolder(): boolean {
+    return this.getFolder().split("/").some((part) => part.startsWith(".") && part !== ".");
+  }
+
+  private async loadHidden(silent: boolean, autoAdd = false): Promise<number> {
+    if (this.syncingHidden) return 0;
+    this.syncingHidden = true;
+    try {
+      const vault = this.plugin.app.vault;
+      const paths: string[] = [];
+      const scan = async (folder: string): Promise<void> => {
+        const listing = await vault.adapter.list(folder);
+        paths.push(...listing.files.filter((path) => path.toLowerCase().endsWith(".js")));
+        for (const child of listing.folders) await scan(child);
+      };
+      if (await vault.adapter.exists(this.getFolder())) await scan(this.getFolder());
+      const sources = new Map<string, string>();
+      for (const path of paths) sources.set(path, await vault.adapter.read(path));
+      for (const path of [...this.registeredByFile.keys()]) {
+        if (!sources.has(path)) this.unloadFile(path, false);
+      }
+      for (const [path, source] of sources) {
+        if (this.hiddenSources.get(path) !== source || !this.registeredByFile.has(path)) {
+          await this.loadFile(path, !silent, autoAdd);
+        }
+      }
+      this.hiddenSources.clear();
+      for (const [path, source] of sources) this.hiddenSources.set(path, source);
+      await this.markSeen([...this.registeredByFile.values()].map((entry) => entry.kind));
+      return this.registeredByFile.size;
+    } finally {
+      this.syncingHidden = false;
+    }
+  }
+
+  async writeScript(path: string, source: string): Promise<TFile | string> {
+    const vault = this.plugin.app.vault;
+    if (this.isHiddenFolder()) {
+      const folder = path.substring(0, path.lastIndexOf("/"));
+      if (!(await vault.adapter.exists(folder))) await vault.adapter.mkdir(folder);
+      await vault.adapter.write(path, source);
+      return path;
+    }
+    const existing = vault.getAbstractFileByPath(path);
+    if (existing instanceof TFile) {
+      await vault.modify(existing, source);
+      return existing;
+    }
+    return vault.create(path, source);
+  }
 
   getFolder(): string {
     const raw = this.plugin.settings.customWidgetsFolder?.trim() ?? "";
@@ -228,6 +282,9 @@ export class CustomWidgetManager {
       this.unloadAll();
       return 0;
     }
+
+    if (this.isHiddenFolder()) return this.loadHidden(silent);
+    this.hiddenSources.clear();
 
     const folder = this.plugin.app.vault.getAbstractFileByPath(folderPath);
     if (!(folder instanceof TFolder)) {
@@ -277,28 +334,29 @@ export class CustomWidgetManager {
    * autoAdd：脚本第一次加载成功时（新建、粘贴、生成模板）把组件放到当前首页。
    * 每个 kind 只触发一次，记录在 settings.seenCustomWidgetKinds。
    */
-  async loadFile(file: TFile, notify = false, autoAdd = true): Promise<boolean> {
-    if (file.extension.toLowerCase() !== "js") return false;
+  async loadFile(file: TFile | string, notify = false, autoAdd = true): Promise<boolean> {
+    const path = typeof file === "string" ? file : file.path;
+    if (!path.toLowerCase().endsWith(".js")) return false;
 
     let source = "";
     try {
-      source = await this.plugin.app.vault.read(file);
+      source = typeof file === "string" ? await this.plugin.app.vault.adapter.read(file) : await this.plugin.app.vault.read(file);
     } catch (err) {
-      console.error(`Home Pages: 读取自定义组件脚本失败 [${file.path}]`, err);
+      console.error(`Home Pages: 读取自定义组件脚本失败 [${path}]`, err);
       return false;
     }
 
     // 先注销该文件先前的注册
-    const previous = this.registeredByFile.get(file.path);
+    const previous = this.registeredByFile.get(path);
     if (previous) {
       previous.unregister();
-      this.registeredByFile.delete(file.path);
+      this.registeredByFile.delete(path);
     }
 
     try {
-      const def = await evaluateWidgetScript(source, this.plugin.app, file.path);
-      const unregister = this.plugin.api.registerWidget(def, `user-script:${file.path}`);
-      this.registeredByFile.set(file.path, {
+      const def = await evaluateWidgetScript(source, this.plugin.app, path);
+      const unregister = this.plugin.api.registerWidget(def, `user-script:${path}`);
+      this.registeredByFile.set(path, {
         kind: def.kind,
         name: def.name,
         icon: def.icon,
@@ -324,9 +382,9 @@ export class CustomWidgetManager {
       }
       return true;
     } catch (error) {
-      console.error(`Home Pages: 加载自定义组件失败 [${file.path}]`, error);
+      console.error(`Home Pages: 加载自定义组件失败 [${path}]`, error);
       const msg = error instanceof Error ? error.message : String(error);
-      new Notice(`加载自定义组件失败: ${file.name}\n${msg}`);
+      new Notice(`加载自定义组件失败: ${path.split("/").pop()}\n${msg}`);
       return false;
     }
   }
@@ -373,6 +431,7 @@ export class CustomWidgetManager {
       entry.unregister();
     }
     this.registeredByFile.clear();
+    this.hiddenSources.clear();
   }
 
   getLoadedWidgets(): CustomWidgetInfo[] {
@@ -450,6 +509,9 @@ export class CustomWidgetManager {
       } catch (err) {
         console.error("Home Pages: 移动组件脚本至回收站失败", err);
       }
+    } else if (this.isHiddenFolder() && await this.plugin.app.vault.adapter.exists(filePath)) {
+      const adapter = this.plugin.app.vault.adapter;
+      if (!(await adapter.trashSystem(filePath))) await adapter.trashLocal(filePath);
     }
 
     // 3. 注销并刷新
@@ -505,6 +567,12 @@ export class CustomWidgetManager {
   registerWatcher(): void {
     const { vault } = this.plugin.app;
 
+    this.plugin.registerInterval(window.setInterval(() => {
+      if (this.isHiddenFolder()) void this.loadHidden(true, true).catch((err: unknown) => {
+        console.error("Home Pages: 隐藏组件目录扫描失败", err);
+      });
+    }, 2000));
+
     this.plugin.registerEvent(
       vault.on("modify", async (file) => {
         if (this.isInFolder(file) && file instanceof TFile) {
@@ -551,8 +619,8 @@ export class CustomWidgetManager {
     );
   }
 
-  async createDemoTemplate(): Promise<TFile | null> {
-    const folderPath = this.getFolder() || "_scripts/home-pages-star-nebula";
+  async createDemoTemplate(): Promise<TFile | string | null> {
+    const folderPath = this.getFolder() || ".scripts/home-pages-star-nebula";
     const vault = this.plugin.app.vault;
 
     if (!this.plugin.settings.customWidgetsFolder) {
@@ -561,7 +629,7 @@ export class CustomWidgetManager {
     }
 
     const folder = vault.getAbstractFileByPath(folderPath);
-    if (!folder) {
+    if (!folder && !this.isHiddenFolder()) {
       try {
         await vault.createFolder(folderPath);
       } catch (err) {
@@ -574,18 +642,20 @@ export class CustomWidgetManager {
     let fileName = "demo-widget.js";
     let targetPath = normalizePath(`${folderPath}/${fileName}`);
     let counter = 1;
-    while (vault.getAbstractFileByPath(targetPath)) {
+    while (await vault.adapter.exists(targetPath)) {
       counter += 1;
       fileName = `demo-widget-${counter}.js`;
       targetPath = normalizePath(`${folderPath}/${fileName}`);
     }
 
     try {
-      const createdFile = await vault.create(targetPath, DEMO_WIDGET_TEMPLATE);
+      const createdFile = await this.writeScript(targetPath, DEMO_WIDGET_TEMPLATE);
       new Notice(`已创建示例组件：${targetPath}`);
       await this.loadFile(createdFile, true);
-      const leaf = this.plugin.app.workspace.getLeaf(false);
-      await leaf.openFile(createdFile);
+      if (createdFile instanceof TFile) {
+        const leaf = this.plugin.app.workspace.getLeaf(false);
+        await leaf.openFile(createdFile);
+      }
       return createdFile;
     } catch (err) {
       console.error("Home Pages: 创建示例组件文件失败", err);
@@ -635,7 +705,7 @@ export class PasteWidgetModal extends Modal {
           try {
             const def = await evaluateWidgetScript(source, this.app);
             const mgr = this.plugin.customWidgetManager;
-            const folderPath = mgr.getFolder() || "_scripts/home-pages-star-nebula";
+            const folderPath = mgr.getFolder() || ".scripts/home-pages-star-nebula";
             const vault = this.app.vault;
 
             if (!this.plugin.settings.customWidgetsFolder) {
@@ -646,7 +716,9 @@ export class PasteWidgetModal extends Modal {
             const folder = vault.getAbstractFileByPath(folderPath);
             if (!folder) {
               try {
-                await vault.createFolder(folderPath);
+                if (folderPath.split("/").some((part) => part.startsWith(".") && part !== ".")) {
+                  if (!(await vault.adapter.exists(folderPath))) await vault.adapter.mkdir(folderPath);
+                } else await vault.createFolder(folderPath);
               } catch (err) {
                 console.error("Home Pages: 创建自定义组件目录失败", err);
                 errorEl.setText(`创建目录失败：${folderPath}`);
@@ -657,14 +729,7 @@ export class PasteWidgetModal extends Modal {
 
             const fileName = `${def.kind}.js`;
             const filePath = normalizePath(`${folderPath}/${fileName}`);
-            const existing = vault.getAbstractFileByPath(filePath);
-            let file: TFile;
-            if (existing instanceof TFile) {
-              await vault.modify(existing, source);
-              file = existing;
-            } else {
-              file = await vault.create(filePath, source);
-            }
+            const file = await mgr.writeScript(filePath, source);
 
             await mgr.loadFile(file, true);
             this.close();

@@ -98,7 +98,8 @@ api.ui.renderEmpty(containerEl, { message: "No data available" });
 Users can build custom widgets directly in JavaScript without creating separate plugins:
 
 1. In plugin settings, navigate to **"Custom Widgets"**.
-2. Set the **"Custom Widgets Folder"** (e.g. `_scripts/home-pages/`), or click **"📄 Create Demo Widget Template"** to auto-generate `demo-widget.js`.
+2. Set the **"Custom Widgets Folder"** (e.g. `.scripts/home-pages/`), or click **"📄 Create Demo Widget Template"** to auto-generate `demo-widget.js`.
+   Hidden folders such as `.scripts/home-pages/` are supported; changes are checked about every 2 seconds. Visible folders use vault file events.
 3. Create or edit `.js` files exporting a standard widget definition:
    ```javascript
    module.exports = {

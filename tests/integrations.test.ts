@@ -459,6 +459,39 @@ async function testUserCustomWidgets(): Promise<void> {
   const w2Info = mgr.getWidgetByKind("mgr-test-2");
   check("getWidgetByKind returns correct metadata", w2Info?.name === "组件2" && w2Info?.filePath === f2.path);
 
+  // 隐藏目录没有 TFile，必须通过 adapter 加载并检测改动。
+  const hiddenSources = new Map([[".scripts/hp/one.js", 'module.exports = { kind: "hidden-one", name: "Hidden", render() {} };']]);
+  const hiddenPlugin = {
+    ...fakePlugin,
+    settings: { ...fakePlugin.settings, customWidgetsFolder: ".scripts/hp" },
+    app: { ...fakePlugin.app, vault: {
+      getAbstractFileByPath: () => null,
+      adapter: {
+        exists: async () => true,
+        list: async () => ({ files: [...hiddenSources.keys()], folders: [] }),
+        read: async (path: string) => hiddenSources.get(path) ?? "",
+        mkdir: async () => {},
+        write: async (path: string, source: string) => { hiddenSources.set(path, source); },
+        trashLocal: async (path: string) => { hiddenSources.delete(path); },
+        trashSystem: async () => false
+      }
+    } }
+  };
+  const hiddenMgr = new CustomWidgetManager(hiddenPlugin as never);
+  check("hidden folder loads through adapter", await hiddenMgr.loadAll(true) === 1 && hiddenMgr.hasKind("hidden-one"));
+  hiddenSources.set(".scripts/hp/one.js", 'module.exports = { kind: "hidden-two", name: "Updated", render() {} };');
+  await hiddenMgr.loadAll(true);
+  check("hidden script edits reload", hiddenMgr.hasKind("hidden-two") && !hiddenMgr.hasKind("hidden-one"));
+  await hiddenMgr.deleteWidget("hidden-two");
+  check("hidden script deletion trashes file", hiddenSources.size === 0 && !hiddenMgr.hasKind("hidden-two"));
+  await hiddenMgr.writeScript(".scripts/hp/created.js", 'module.exports = { kind: "hidden-created", name: "Created", render() {} };');
+  await hiddenMgr.loadAll(true);
+  check("hidden scripts can be created through adapter", hiddenMgr.hasKind("hidden-created"));
+  hiddenSources.clear();
+  await hiddenMgr.loadAll(true);
+  check("external hidden script deletion unregisters widget", hiddenMgr.getLoadedWidgets().length === 0);
+  hiddenMgr.unloadAll();
+
   // 单文件热更新
   mockFiles.set("_scripts/hp/w1.js", `module.exports = { kind: "mgr-test-1-updated", name: "组件1更新", render: () => {} };`);
   await mgr.loadFile(f1, false);

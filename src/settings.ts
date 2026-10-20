@@ -216,7 +216,7 @@ export class HomePagesSettingTab extends PluginSettingTab {
     addPathSetting(containerEl, this.app, {
       name: "自定义组件目录",
       desc: "放置自定义组件 JavaScript (.js) 脚本的库内目录。保存修改即自动生效并支持热重载。",
-      placeholder: "_scripts/home-pages-star-nebula",
+      placeholder: ".scripts/home-pages-star-nebula",
       value: settings.customWidgetsFolder,
       suggest: { folders: true, files: false },
       onChange: (value) => {
