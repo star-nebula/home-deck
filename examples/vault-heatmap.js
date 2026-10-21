@@ -119,7 +119,9 @@ module.exports = {
     gridCol.style.flexDirection = "column";
     gridCol.style.gap = "3px";
 
-    // 上：月份标签（英文缩写，标在每月所在的第一个周列，GitHub 同款；间隔不足 3 列则跳过防重叠）
+    // 上：月份标签（英文缩写）。每一列归属哪个月 = 该列「最后一个可见格子」所在的月：
+    // 跨月那一列里 1 号是可见的，于是它归入新月份（GitHub 同款）；最左列是被 53 周窗口
+    // 截断的半月，按它自己的起始日算，否则那个月会整月没有标签。
     const monthsRow = gridCol.createDiv({ cls: "vh-months" });
     monthsRow.style.display = "grid";
     monthsRow.style.gridAutoFlow = "column";
@@ -128,18 +130,28 @@ module.exports = {
     monthsRow.style.height = "16px";
     const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const colCount = Math.ceil(cells.length / 7);
+    const MIN_LABEL_GAP = 2; // 两个标签至少隔 2 列（30px），再窄 9px 的字就会叠上
+    let renderedCount = 0;
+    while (renderedCount < cells.length && cells[renderedCount].date.getTime() <= today.getTime()) renderedCount += 1;
+    const monthOfCol = (col) => {
+      const idx = col === 0 ? 0 : Math.min(col * 7 + 6, Math.max(0, renderedCount - 1));
+      const cell = cells[idx];
+      return cell ? cell.date.getMonth() : -1;
+    };
     let prevMonth = -1;
-    let lastLabelCol = -3;
+    let lastLabelCol = -MIN_LABEL_GAP;
+    let pendingMonth = -1; // 间隔不够时先挂起、往后面的列顺延；直接跳过会让那个月永远没标签
     for (let col = 0; col < colCount; col++) {
-      const first = cells[col * 7];
-      const m = first ? first.date.getMonth() : -1;
-      let text = "";
+      const m = monthOfCol(col);
       if (m !== prevMonth) {
-        if (col - lastLabelCol >= 3) {
-          text = MONTHS[m];
-          lastLabelCol = col;
-        }
+        pendingMonth = m;
         prevMonth = m;
+      }
+      let text = "";
+      if (pendingMonth !== -1 && col - lastLabelCol >= MIN_LABEL_GAP) {
+        text = MONTHS[pendingMonth];
+        lastLabelCol = col;
+        pendingMonth = -1;
       }
       const el = monthsRow.createDiv({ text });
       el.style.fontSize = "9px";
