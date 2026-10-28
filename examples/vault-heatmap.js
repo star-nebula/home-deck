@@ -119,9 +119,9 @@ module.exports = {
     gridCol.style.flexDirection = "column";
     gridCol.style.gap = "3px";
 
-    // 上：月份标签（英文缩写）。每一列归属哪个月 = 该列「最后一个可见格子」所在的月：
-    // 跨月那一列里 1 号是可见的，于是它归入新月份（GitHub 同款）；最左列是被 53 周窗口
-    // 截断的半月，按它自己的起始日算，否则那个月会整月没有标签。
+    // 上：月份标签（英文缩写）。GitHub 的列标签挂在「1 号前一天所在周」的列上：
+    // 例如 2026-02-01 是周日，Feb 会挂在 2026-01-25 那一周；最左侧被截断的起始月
+    // 则不再补标签，避免默认 53 周时同时出现两个 Oct。
     const monthsRow = gridCol.createDiv({ cls: "vh-months" });
     monthsRow.style.display = "grid";
     monthsRow.style.gridAutoFlow = "column";
@@ -130,30 +130,20 @@ module.exports = {
     monthsRow.style.height = "16px";
     const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const colCount = Math.ceil(cells.length / 7);
-    const MIN_LABEL_GAP = 2; // 两个标签至少隔 2 列（30px），再窄 9px 的字就会叠上
-    let renderedCount = 0;
-    while (renderedCount < cells.length && cells[renderedCount].date.getTime() <= today.getTime()) renderedCount += 1;
-    const monthOfCol = (col) => {
-      const idx = col === 0 ? 0 : Math.min(col * 7 + 6, Math.max(0, renderedCount - 1));
-      const cell = cells[idx];
-      return cell ? cell.date.getMonth() : -1;
-    };
-    let prevMonth = -1;
-    let lastLabelCol = -MIN_LABEL_GAP;
-    let pendingMonth = -1; // 间隔不够时先挂起、往后面的列顺延；直接跳过会让那个月永远没标签
+    const dayNumber = (d) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000;
+    const labelCols = new Map();
+    for (
+      let first = new Date(start.getFullYear(), start.getMonth(), 1);
+      first.getTime() <= today.getTime();
+      first.setMonth(first.getMonth() + 1)
+    ) {
+      // 起始月的 1 号若在窗口之前，它就是被截断的半月；GitHub 不为它补标签。
+      if (first.getTime() < start.getTime()) continue;
+      const col = Math.max(0, Math.floor((dayNumber(first) - dayNumber(start) - 1) / 7));
+      if (col < colCount) labelCols.set(col, MONTHS[first.getMonth()]);
+    }
     for (let col = 0; col < colCount; col++) {
-      const m = monthOfCol(col);
-      if (m !== prevMonth) {
-        pendingMonth = m;
-        prevMonth = m;
-      }
-      let text = "";
-      if (pendingMonth !== -1 && col - lastLabelCol >= MIN_LABEL_GAP) {
-        text = MONTHS[pendingMonth];
-        lastLabelCol = col;
-        pendingMonth = -1;
-      }
-      const el = monthsRow.createDiv({ text });
+      const el = monthsRow.createDiv({ text: labelCols.get(col) || "" });
       el.style.fontSize = "9px";
       el.style.lineHeight = "16px";
       el.style.color = "var(--text-faint)";
