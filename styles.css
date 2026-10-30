@@ -4934,3 +4934,26 @@ input.hp-allnotes-search[type="text"]:focus {
   user-select: none;
 }
 
+
+/* ---- 全库热力值（vault-heatmap）------------------------------------------- */
+
+.vh-lv0 {
+  background: var(--background-modifier-hover);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.vh-lv1 {
+  background: color-mix(in srgb, var(--vh-accent, #22c55e) 25%, var(--background-secondary));
+}
+
+.vh-lv2 {
+  background: color-mix(in srgb, var(--vh-accent, #22c55e) 50%, var(--background-secondary));
+}
+
+.vh-lv3 {
+  background: color-mix(in srgb, var(--vh-accent, #22c55e) 75%, var(--background-secondary));
+}
+
+.vh-lv4 {
+  background: var(--vh-accent, #22c55e);
+}

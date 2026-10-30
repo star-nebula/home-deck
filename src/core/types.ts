@@ -18,7 +18,8 @@ export type BuiltinWidgetKind =
   | "insights"
   | "wechat"
   | "media"
-  | "knowledgemap";
+  | "knowledgemap"
+  | "vault-heatmap";
 
 export type WidgetKind = BuiltinWidgetKind | (string & {});
 
