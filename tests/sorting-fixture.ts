@@ -72,6 +72,7 @@ function createHost(): HomeDeckHost {
       }
     },
     register: () => undefined,
+    pluginDir: ".obsidian/plugins/home-deck",
     customWidgets: {
       loadAll: async () => 0,
       getLoadedWidgets: () => [],

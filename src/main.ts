@@ -36,6 +36,10 @@ export default class HomeDeckPlugin extends Plugin implements HomeDeckHost {
     return this.repo.settings;
   }
 
+  get pluginDir(): string {
+    return this.repo.pluginDir;
+  }
+
   async onload(): Promise<void> {
     this.repo = new SettingsRepository(
       this.app,
@@ -198,7 +202,9 @@ export default class HomeDeckPlugin extends Plugin implements HomeDeckHost {
 
   private async onLayoutReady(): Promise<void> {
     this.vaultIndex.reconcile();
-    await this.customWidgets.loadAll(true);
+    await this.customWidgets.ensureMigrated();
+    // 自定义组件在首页打开后空闲加载，避免组件多时拖慢启动；加载完成会按 kind 刷新占位卡片。
+    void this.customWidgets.loadAll(this.settings.autoAddCustomWidgets);
     await this.adoptLegacyLeaves();
     if (this.settings.openOnStartup && this.getHomeLeaves().length === 0) void this.openHome();
   }

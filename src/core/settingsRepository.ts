@@ -64,7 +64,15 @@ export class SettingsRepository {
   async load(): Promise<LegacyImportResult> {
     const raw = await this.storage.loadData();
     if (hasUsableData(raw)) {
-      this.current = migrateRawSettings(await this.withLegacyLoaderSettings(raw), this.deps).settings;
+      const result = migrateRawSettings(await this.withLegacyLoaderSettings(raw), this.deps);
+      this.current = result.settings;
+      if (result.migrated) {
+        try {
+          await this.saveNow();
+        } catch (error) {
+          console.error("Home Deck: failed to persist schema upgrade", error);
+        }
+      }
       return { imported: false };
     }
 

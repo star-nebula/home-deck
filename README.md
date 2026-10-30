@@ -67,7 +67,9 @@ A widget definition is the same object described in `src/core/ports.ts`: `kind`,
 
 ### Custom widgets (unified loader)
 
-Place `.js` widget scripts in the configured folder (default `.obsidian/home-pages-widgets`). They are evaluated and registered into the same `WidgetRegistry` as built-in widgets, so they share rendering, refresh, configuration, and the Host API. Hidden folders are supported; changes are picked up by file events or a 30-second fallback scan.
+Place `.js` widget scripts in `<plugin-dir>/widgets/` (the folder next to `main.js`). They are evaluated and registered into the same `WidgetRegistry` as built-in widgets, so they share rendering, refresh, configuration, and the Host API. On first upgrade, scripts from the legacy `.obsidian/home-pages-widgets` folder are copied into `<plugin-dir>/widgets/`; the old folder is left as a backup.
+
+Auto-add is **off by default**: loading a script does not create a card. Add it from the **Add widget** panel when you want it. Scripts are loaded after the dashboard opens; unchanged files are skipped by mtime, and a 60-second fallback scan covers the plugin's hidden folder.
 
 > **Security:** custom scripts execute arbitrary JavaScript with plugin privileges. Only load scripts you trust.
 

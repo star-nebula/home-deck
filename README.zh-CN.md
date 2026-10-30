@@ -67,7 +67,9 @@ api.ui.renderEmpty(containerEl, { message: "暂无数据" });
 
 ### 自定义组件（统一加载器）
 
-把 `.js` 组件脚本放进设置里的组件目录（默认 `.obsidian/home-pages-widgets`）。脚本会被执行并注册到与内置组件相同的 `WidgetRegistry`，共用渲染、刷新、配置和 Host API。支持隐藏目录；改动由文件事件或 30 秒兜底扫描拾取。
+把 `.js` 组件脚本放进 `<插件目录>/widgets/`（与 `main.js` 同级）。脚本会被执行并注册到与内置组件相同的 `WidgetRegistry`，共用渲染、刷新、配置和 Host API。首次升级会把旧 `.obsidian/home-pages-widgets` 目录里的脚本复制到 `<插件目录>/widgets/`，旧目录保留作备份。
+
+**默认不会自动添加卡片**：加载脚本只注册组件，不会凭空多出卡片；需要时在“添加组件”面板里手动加入。脚本在首页打开后加载；未变化的文件按 mtime 跳过，插件隐藏目录用 60 秒兜底扫描。
 
 > **安全提示：** 自定义脚本以插件权限执行任意 JavaScript，请只加载可信文件。
 

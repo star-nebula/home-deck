@@ -58,6 +58,14 @@ try {
 
 设置页 **备份与迁移 → 从旧版导入** 可手动重试。若旧插件仍启用，Home Deck 不会抢占它的视图标签，会提示先禁用旧插件。
 
+## 自定义组件
+
+- 脚本固定放在 `<pluginDir>/widgets/`（例如 `.obsidian/plugins/home-deck/widgets/`），与 `main.js` 同级。
+- 首次升级会把旧 `.obsidian/home-pages-widgets` 里的 `.js` 复制进来一次；旧目录保留作备份，之后不再读取。
+- 默认 `autoAddCustomWidgets = false`：只注册组件，不自动往首页加卡片；需要时在“添加组件”面板手动加入。
+- 启动后异步加载自定义组件，不阻塞首页打开；按 mtime 跳过未变化脚本，隐藏目录用 60 秒兜底扫描。
+- 脚本以插件权限执行任意 JavaScript，只应加载可信文件。
+
 ## 代码结构
 
 ```text

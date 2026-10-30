@@ -11,6 +11,8 @@ export interface CustomWidgetHost {
   registry: WidgetRegistry;
   layout: LayoutStore;
   settings: HomeDeckSettings;
+  /** 插件目录；自定义组件脚本固定放在 <pluginDir>/widgets 下。 */
+  pluginDir: string;
   saveSettings(): Promise<void>;
   refreshViews(options?: { kind?: string }): void;
 }
@@ -23,7 +25,7 @@ export interface CustomWidgetInfo {
 }
 
 /** 隐藏目录没有可靠的 vault 事件，用低频扫描兜底。 */
-export const CUSTOM_WIDGET_SCAN_INTERVAL_MS = 30_000;
+export const CUSTOM_WIDGET_SCAN_INTERVAL_MS = 60_000;
 
 interface LoadedCustomWidget {
   definition: WidgetDefinition<Record<string, unknown>>;
@@ -170,6 +172,51 @@ export class CustomWidgetLoader {
     return this.loaded.size;
   }
 
+  /**
+   * 把旧的外部自定义组件目录一次性复制到插件内的 widgets/ 目录。
+   * 旧目录保持原样，仅作为迁移来源；之后不再依赖它。
+   */
+  async ensureMigrated(): Promise<void> {
+    const target = this.folder();
+    const legacy = normalizePath(this.host.settings.customWidgetsFolder?.trim() ?? "");
+    if (!target || !legacy || legacy === target) return;
+
+    const targetFiles = await this.listScripts(target);
+    if (targetFiles.length > 0) {
+      if (this.host.settings.customWidgetsFolder !== target) {
+        this.host.settings.customWidgetsFolder = target;
+        await this.host.saveSettings();
+      }
+      return;
+    }
+
+    const legacyFiles = await this.listScripts(legacy);
+    if (legacyFiles.length === 0) {
+      this.host.settings.customWidgetsFolder = target;
+      await this.host.saveSettings();
+      return;
+    }
+
+    const adapter = this.host.app.vault.adapter;
+    try {
+      await adapter.mkdir(target);
+    } catch {
+      // 目录已存在时忽略。
+    }
+    for (const path of legacyFiles) {
+      const source = await this.read(path);
+      if (source === null) continue;
+      const name = path.split("/").pop() ?? path;
+      try {
+        await adapter.write(normalizePath(`${target}/${name}`), source);
+      } catch (error) {
+        console.error(`Home Deck: failed to migrate custom widget ${path}`, error);
+      }
+    }
+    this.host.settings.customWidgetsFolder = target;
+    await this.host.saveSettings();
+  }
+
   async loadFile(path: string, autoAdd = false): Promise<boolean> {
     if (this.disposed) return false;
     const normalized = normalizePath(path);
@@ -266,7 +313,8 @@ export class CustomWidgetLoader {
   }
 
   private folder(): string {
-    return normalizePath(this.host.settings.customWidgetsFolder?.trim() ?? "").replace(/\/+$/g, "");
+    const dir = normalizePath(this.host.pluginDir ?? "").replace(/\/+$/g, "");
+    return dir ? normalizePath(`${dir}/widgets`) : "";
   }
 
   private isUnderFolder(path: string): boolean {

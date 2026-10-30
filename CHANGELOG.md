@@ -6,7 +6,8 @@ First release as **Home Deck** (`home-deck`), an independent fork of Home Pages.
 
 ### Added
 
-- Unified custom-widget loader: built-ins and `.js` scripts in the configured folder register into the same `WidgetRegistry` and share rendering/refresh/config services.
+- Unified custom-widget loader: built-ins and `.js` scripts in `<plugin-dir>/widgets/` register into the same `WidgetRegistry` and share rendering/refresh/config services.
+- Legacy `.obsidian/home-pages-widgets` scripts are copied into `<plugin-dir>/widgets/` once; auto-add is off by default so upgrades do not create surprise cards.
 - Automatic one-time migration from `home-pages-star-nebula` / `home-pages` `data.json`; the old plugin's data is never modified.
 - Incremental `VaultIndex` with structural/content/metadata event handling and coalesced notifications.
 - Path-scoped, visibility-aware card refresh (`refreshScope`, `IntersectionObserver`).

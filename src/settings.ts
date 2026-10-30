@@ -11,7 +11,6 @@ import {
 import type { HomeDeckSettings, HomePage, WidgetInstance } from "./core/types";
 import { createId } from "./utils/id";
 import { ConfirmModal, MAX_COLUMNS, MAX_ROWS, PromptModal } from "./ui/modals";
-import { addPathSetting } from "./ui/settingHelpers";
 
 export const SETTINGS_VERSION = DATA_SCHEMA_VERSION;
 export { DEFAULT_SETTINGS };
@@ -153,29 +152,22 @@ export class HomeDeckSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName("自定义组件").setHeading();
     containerEl.createEl("p", {
       cls: "setting-item-description",
-      text: "自定义 JS 组件与内置组件注册到同一个加载器，共用渲染、刷新和配置服务。脚本会执行任意 JavaScript，请只加载可信文件。"
+      text: "自定义 JS 组件与内置组件注册到同一个加载器，共用渲染、刷新和配置服务。脚本固定放在插件自己的 widgets/ 目录，不再依赖外部文件夹。脚本会执行任意 JavaScript，请只加载可信文件。"
     });
-    addPathSetting(containerEl, this.app, {
-      name: "组件目录",
-      desc: "放置 .js 组件脚本的库内目录；隐藏目录也支持。保存后自动重新扫描。",
-      placeholder: ".obsidian/home-pages-widgets",
-      value: settings.customWidgetsFolder,
-      suggest: { folders: true, files: false },
-      onChange: (value) => {
-        settings.customWidgetsFolder = value.trim();
-      },
-      onCommit: (value) => {
-        settings.customWidgetsFolder = value.trim();
-        void (async () => {
-          await this.host.saveSettings();
-          const count = await this.host.customWidgets.loadAll();
-          new Notice(`Home Deck: 已加载 ${count} 个组件`);
-          this.display();
-        })();
-      }
-    });
+    const widgetsDir = `${this.host.pluginDir}/widgets`;
+    new Setting(containerEl)
+      .setName("组件目录（插件内）")
+      .setDesc(`${widgetsDir} — 首次升级会把旧外部目录的脚本复制进来，旧目录保留作备份。`)
+      .addButton((button) => button.setButtonText("复制路径").onClick(async () => {
+        try {
+          await navigator.clipboard.writeText(widgetsDir);
+          new Notice("组件目录已复制");
+        } catch {
+          new Notice(widgetsDir);
+        }
+      }));
     new Setting(containerEl).setName("新组件自动加入首页")
-      .setDesc("脚本第一次加载成功时，如果首页还没有同类型卡片，就自动放一张到当前页。")
+      .setDesc("关闭时不会自动添加卡片；可在“添加组件”面板里手动加入。默认关闭，避免升级后凭空多出组件。")
       .addToggle((toggle) => toggle.setValue(settings.autoAddCustomWidgets).onChange(async (value) => {
         settings.autoAddCustomWidgets = value;
         await this.host.saveSettings();
@@ -184,6 +176,7 @@ export class HomeDeckSettingTab extends PluginSettingTab {
       .setName("重新扫描")
       .setDesc("立即重新读取组件目录，应用脚本改动。")
       .addButton((button) => button.setButtonText("重新扫描加载").onClick(async () => {
+        await this.host.customWidgets.ensureMigrated();
         const count = await this.host.customWidgets.loadAll();
         new Notice(`Home Deck: 已加载 ${count} 个组件`);
         this.display();

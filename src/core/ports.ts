@@ -127,6 +127,8 @@ export interface HomeDeckHost {
   readonly repo: SettingsRepository;
   readonly services: WidgetServices;
   readonly customWidgets: CustomWidgetLoader;
+  /** 插件目录；自定义组件脚本固定放在 <pluginDir>/widgets 下。 */
+  readonly pluginDir: string;
   register(cleanup: () => void): void;
   saveSettings(): Promise<void>;
   refreshViews(options?: { layoutOnly?: boolean; kind?: string }): void;

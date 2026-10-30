@@ -65,7 +65,8 @@ function testMigration(): void {
   assert.equal(result.settings.rowHeight, 44);
   assert.equal(result.settings.alwaysShowPageTabs, false);
   assert.equal(result.settings.customWidgetsFolder, ".scripts/home-pages");
-  assert.equal(result.settings.autoAddCustomWidgets, true);
+  // 旧版默认自动加卡片；升级时必须关掉，避免凭空多出组件。
+  assert.equal(result.settings.autoAddCustomWidgets, false);
   assert.deepEqual(result.settings.seenCustomWidgetKinds, ["a", "b"]);
 
   // 幂等：再次迁移 v2 数据不改变结构。

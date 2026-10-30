@@ -13,7 +13,7 @@ export const DEFAULT_SETTINGS: HomeDeckSettings = {
   maxWidth: 1400,
   alwaysShowPageTabs: true,
   customWidgetsFolder: ".obsidian/home-pages-widgets",
-  autoAddCustomWidgets: true,
+  autoAddCustomWidgets: false,
   seenCustomWidgetKinds: []
 };
 
@@ -103,7 +103,7 @@ export function sanitizeSettings(raw: unknown, deps: SettingsDeps, source?: stri
       typeof value.customWidgetsFolder === "string"
         ? value.customWidgetsFolder.trim()
         : DEFAULT_SETTINGS.customWidgetsFolder,
-    autoAddCustomWidgets: value.autoAddCustomWidgets !== false,
+    autoAddCustomWidgets: value.autoAddCustomWidgets === true,
     seenCustomWidgetKinds: Array.isArray(value.seenCustomWidgetKinds)
       ? [...new Set(value.seenCustomWidgetKinds.filter((kind): kind is string => typeof kind === "string"))]
       : []
@@ -123,8 +123,11 @@ export function migrateRawSettings(raw: unknown, deps: SettingsDeps, source?: st
   const value = isRecord(raw) ? raw : {};
   const fromVersion = typeof value.version === "number" ? value.version : 0;
   const migrated = fromVersion < DATA_SCHEMA_VERSION;
+  const settings = sanitizeSettings(raw, deps, migrated ? source : undefined);
+  // 旧版默认会自动把自定义组件加到首页；升级时关掉，避免用户升级后凭空多出卡片。
+  if (migrated) settings.autoAddCustomWidgets = false;
   return {
-    settings: sanitizeSettings(raw, deps, migrated ? source : undefined),
+    settings,
     migrated,
     fromVersion
   };
