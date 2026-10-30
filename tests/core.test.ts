@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir, stat as statFile, writeFile, mkdir } from "node:fs/promises";
+import path from "node:path";
 import { migrateRawSettings, sanitizeSettings, type SettingsDeps } from "../src/core/migrations";
 import { SettingsRepository, type PluginStorage } from "../src/core/settingsRepository";
 import { isChangeRelevant } from "../src/core/changeScope";
 import { WidgetRegistry } from "../src/core/widgetRegistry";
 import { BUILTIN_WIDGETS } from "../src/widgets/builtins";
-import { evaluateWidgetScript } from "../src/services/customWidgets";
+import { evaluateWidgetScript, CustomWidgetLoader } from "../src/services/customWidgets";
 import type { HomeDeckSettings, VaultChange } from "../src/core/types";
 
 const KINDS = [
@@ -195,8 +196,68 @@ async function testCustomWidgetRegistration(): Promise<void> {
   }
 }
 
+async function testRealLoader(): Promise<void> {
+  const pluginDir = process.env.HOME_DECK_TEST_PLUGIN_DIR;
+  if (!pluginDir) return;
+  const root = process.env.HOME_DECK_TEST_VAULT_ROOT ?? "E:/knowledge";
+  const absolute = (vaultPath: string): string => path.join(root, vaultPath);
+  const adapter = {
+    exists: async (vaultPath: string) => statFile(absolute(vaultPath)).then(() => true, () => false),
+    read: async (vaultPath: string) => readFile(absolute(vaultPath), "utf8"),
+    write: async (vaultPath: string, content: string) => {
+      await writeFile(absolute(vaultPath), content, "utf8");
+    },
+    mkdir: async (vaultPath: string) => {
+      await mkdir(absolute(vaultPath), { recursive: true });
+    },
+    stat: async (vaultPath: string) => statFile(absolute(vaultPath)).then(
+      (stat) => ({ mtime: stat.mtimeMs, ctime: stat.ctimeMs, size: stat.size }),
+      () => null
+    ),
+    list: async (vaultPath: string) => {
+      const entries = await readdir(absolute(vaultPath), { withFileTypes: true });
+      return {
+        files: entries.filter((entry) => entry.isFile()).map((entry) => `${vaultPath}/${entry.name}`),
+        folders: entries.filter((entry) => entry.isDirectory()).map((entry) => `${vaultPath}/${entry.name}`)
+      };
+    }
+  };
+  const app = {
+    vault: {
+      configDir: ".obsidian",
+      adapter,
+      getFiles: () => [],
+      getAbstractFileByPath: () => null,
+      cachedRead: async () => ""
+    }
+  };
+  const registry = new WidgetRegistry(BUILTIN_WIDGETS);
+  const settings = sanitizeSettings(
+    { version: 3, pages: [{ id: "p", name: "p", widgets: [] }], customWidgetsFolder: ".obsidian/home-pages-widgets", autoAddCustomWidgets: false, seenCustomWidgetKinds: [] },
+    deps
+  );
+  const host = {
+    app,
+    registry,
+    layout: { addWidget: () => ({}) },
+    settings,
+    pluginDir,
+    saveSettings: async () => undefined,
+    refreshViews: () => undefined
+  };
+  const loader = new CustomWidgetLoader(host as never);
+  await loader.ensureMigrated();
+  const count = await loader.loadAll(false);
+  assert.ok(count >= 1);
+  assert.ok(registry.get("vault-heatmap"), "vault-heatmap should be registered from the plugin widgets folder");
+  assert.equal(settings.customWidgetsFolder, `${pluginDir}/widgets`);
+  loader.dispose();
+  console.log("PASS real plugin widgets folder loads through the unified loader");
+}
+
 testMigration();
 testChangeScope();
 await testRepositoryMigration();
 await testCustomWidgetRegistration();
+await testRealLoader();
 console.log("ALL CORE TESTS PASSED");
