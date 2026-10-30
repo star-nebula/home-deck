@@ -101,8 +101,8 @@ export default class HomeDeckPlugin extends Plugin implements HomeDeckHost {
   }
 
   onunload(): void {
-    void this.repo.flush();
-    this.vaultIndex.dispose();
+    void this.repo?.flush();
+    this.vaultIndex?.dispose();
     disposeMediaCache();
     clearMocIndexCache();
     clearDocCache();
