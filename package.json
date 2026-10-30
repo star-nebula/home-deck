@@ -1,6 +1,6 @@
 {
   "name": "home-deck",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "A fast, customizable homepage dashboard plugin for Obsidian featuring banners, recent notes, quick access, countdowns, pomodoro, daily quotes, habit tracking, task kanban, vault statistics, and optional integrations.",
   "main": "main.js",
   "scripts": {

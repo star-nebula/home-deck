@@ -2,6 +2,8 @@
 
 A fast, customizable homepage dashboard for Obsidian. Home Deck gives you a 12-column adaptive grid, draggable and resizable cards, multiple pages, and 19 built-in widgets. Layouts and settings stay local in `data.json` — no analytics, telemetry, or hidden network tracking.
 
+> **Version 0.0.1 — baseline.** This is the first internal baseline of the refactor; APIs and layouts may still change before a stable release.
+
 > **Project origin:** Home Deck is an independent fork of [jepicaju862-lab/home-pages](https://github.com/jepicaju862-lab/home-pages) (GPL-3.0), maintained by [star-nebula](https://github.com/star-nebula). All credit for the original work goes to its author. Plugin id: `home-deck`.
 >
 > **Migrating from Home Pages?** Install Home Deck, enable it once, and your layout is copied from `.obsidian/plugins/home-pages-star-nebula/data.json` automatically. The old plugin and its data are left untouched. A backup is written to `.obsidian/plugins/home-deck/data.pre-migration.json`.

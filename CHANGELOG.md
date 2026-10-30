@@ -1,8 +1,8 @@
 # Changelog
 
-## 1.0.0 — 2026-10-30
+## 0.0.1 — 2026-10-30
 
-First release as **Home Deck** (`home-deck`), an independent fork of Home Pages.
+Baseline snapshot of the **Home Deck** refactor (`home-deck`), an independent fork of Home Pages. This is the first internal baseline; APIs and layouts may still change before a stable release.
 
 ### Added
 

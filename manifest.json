@@ -1,7 +1,7 @@
 {
 	"id": "home-deck",
 	"name": "Home Deck",
-	"version": "1.0.0",
+	"version": "0.0.1",
 	"minAppVersion": "1.7.2",
 	"description": "A fast, customizable homepage dashboard for Obsidian with banners, recent notes, quick access, countdowns, pomodoro, quotes, habits, kanban, vault statistics, and optional integrations.",
 	"author": "star-nebula",

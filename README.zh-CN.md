@@ -2,6 +2,8 @@
 
 Home Deck 是一个快速、可定制的 Obsidian 首页仪表盘：12 列自适应网格、可拖拽缩放的卡片、多页面，以及 19 个内置组件。布局和设置只保存在本地 `data.json`，没有遥测，也没有隐藏的后台上报。
 
+> **版本 0.0.1 — 基线。** 这是重构后的第一个内部基线；在稳定版之前，API 和布局仍可能调整。
+
 > **项目来源：** Home Deck 是 [jepicaju862-lab/home-pages](https://github.com/jepicaju862-lab/home-pages)（GPL-3.0）的独立分支，由 [star-nebula](https://github.com/star-nebula) 维护。原项目的功劳归原作者所有。插件 id：`home-deck`。
 >
 > **从 Home Pages 升级：** 安装 Home Deck 并启用一次，布局会自动从 `.obsidian/plugins/home-pages-star-nebula/data.json` 复制过来；旧插件和旧数据保持原样。迁移前会写入备份 `.obsidian/plugins/home-deck/data.pre-migration.json`。
