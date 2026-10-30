@@ -169,7 +169,12 @@ export class SettingsRepository {
       return { imported: false, reason: "backup-failed" };
     }
     this.current = migrateRawSettings(legacy.raw, this.deps, legacy.source).settings;
-    await this.saveNow();
+    try {
+      await this.saveNow();
+    } catch (error) {
+      // 迁移结果仍在内存中可用；下次保存会重试，不能让插件加载失败。
+      console.error("Home Deck: failed to persist migrated settings", error);
+    }
     for (const listener of [...this.listeners]) listener(this.current);
     return { imported: true, source: legacy.source };
   }
