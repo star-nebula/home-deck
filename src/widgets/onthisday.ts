@@ -2,7 +2,7 @@ import { Setting, setIcon } from "obsidian";
 import { firstIsoDateString } from "../utils/date";
 import { isExcluded, isInScope } from "../utils/vault";
 import { addNumberSetting, addPathSetting, addTextareaSetting } from "../ui/settingHelpers";
-import { WidgetDefinition, clampInt, normalizeWith, toStringList } from "./types";
+import { WidgetContext, WidgetDefinition, clampInt, normalizeWith, toStringList } from "./types";
 
 export interface OnThisDayConfig extends Record<string, unknown> {
   limit: number;
@@ -25,6 +25,38 @@ const DEFAULTS: OnThisDayConfig = {
   fallbackCtime: true
 };
 
+interface DayEntry {
+  file: { path: string; basename: string };
+  iso: string;
+}
+
+/** 每次 vault generation 只扫一遍全库，按 MM-DD 建索引；渲染时只取当天。 */
+let indexCache: { generation: number; key: string; byDay: Map<string, DayEntry[]> } | null = null;
+
+/** 插件卸载时释放“那年今日”索引。 */
+export function clearOnThisDayIndex(): void {
+  indexCache = null;
+}
+
+function buildIndex(ctx: WidgetContext<OnThisDayConfig>, config: OnThisDayConfig, key: string): Map<string, DayEntry[]> {
+  const { app } = ctx;
+  const byDay = new Map<string, DayEntry[]>();
+  for (const file of ctx.getMarkdownFiles()) {
+    if (!isInScope(file, config.folder) || isExcluded(file, config.excludeFolders)) continue;
+    const fm: Record<string, unknown> = app.metadataCache.getFileCache(file)?.frontmatter ?? {};
+    let iso = firstIsoDateString(...config.dateFields.map((field) => fm[field]));
+    if (!iso && config.useFilenameDate) iso = file.basename.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+    if (!iso && config.fallbackCtime) iso = firstIsoDateString(file.stat.ctime);
+    if (!iso) continue;
+    const day = iso.slice(5, 10);
+    let list = byDay.get(day);
+    if (!list) byDay.set(day, (list = []));
+    list.push({ file, iso });
+  }
+  indexCache = { generation: ctx.services.vault.generation, key, byDay };
+  return byDay;
+}
+
 export const onThisDayWidget: WidgetDefinition<OnThisDayConfig> = {
   kind: "onthisday",
   name: "那年今日",
@@ -32,6 +64,7 @@ export const onThisDayWidget: WidgetDefinition<OnThisDayConfig> = {
   icon: "calendar-clock",
   accent: "#db2777",
   defaultSize: { w: 7, h: 4 },
+  refreshScope: (config) => (config.folder ? { folders: [config.folder] } : null),
   defaultConfig: () => ({ ...DEFAULTS, excludeFolders: [], dateFields: [...DEFAULTS.dateFields] }),
   normalizeConfig: (raw) => {
     const config = normalizeWith(DEFAULTS, raw);
@@ -43,24 +76,28 @@ export const onThisDayWidget: WidgetDefinition<OnThisDayConfig> = {
   },
 
   render(body, ctx) {
-    const { app, config } = ctx;
+    const { config } = ctx;
     const now = new Date();
     const mm = String(now.getMonth() + 1).padStart(2, "0");
     const dd = String(now.getDate()).padStart(2, "0");
     const thisYear = now.getFullYear();
     ctx.setSubtitle(`${now.getMonth() + 1}月${now.getDate()}日`);
 
-    const items = ctx.getMarkdownFiles()
-      .filter((file) => isInScope(file, config.folder) && !isExcluded(file, config.excludeFolders))
-      .map((file) => {
-        const fm: Record<string, unknown> = app.metadataCache.getFileCache(file)?.frontmatter ?? {};
-        let iso = firstIsoDateString(...config.dateFields.map((field) => fm[field]));
-        if (!iso && config.useFilenameDate) iso = file.basename.match(/\d{4}-\d{2}-\d{2}/)?.[0];
-        if (!iso && config.fallbackCtime) iso = firstIsoDateString(file.stat.ctime);
-        return { file, iso };
-      })
-      .filter((entry): entry is { file: typeof entry.file; iso: string } => !!entry.iso)
-      .filter(({ iso }) => iso.slice(5, 7) === mm && iso.slice(8, 10) === dd && Number(iso.slice(0, 4)) < thisYear)
+    const key = JSON.stringify([
+      config.folder,
+      config.excludeFolders,
+      config.dateFields,
+      config.useFilenameDate,
+      config.fallbackCtime
+    ]);
+    const generation = ctx.services.vault.generation;
+    const byDay =
+      indexCache && indexCache.generation === generation && indexCache.key === key
+        ? indexCache.byDay
+        : buildIndex(ctx, config, key);
+    const day = `${mm}-${dd}`;
+    const items = (byDay.get(day) ?? [])
+      .filter(({ iso }) => Number(iso.slice(0, 4)) < thisYear)
       .sort((a, b) => (a.iso < b.iso ? 1 : a.iso > b.iso ? -1 : 0))
       .slice(0, config.limit);
 

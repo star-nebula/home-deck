@@ -1,5 +1,5 @@
 import { App, TFile } from "obsidian";
-import { todayIso } from "../utils/date";
+import { toIsoDate, todayIso } from "../utils/date";
 import type { DuoweiConfig } from "./duowei";
 
 // ---- .duowei 文件的最小类型（只取首页需要的部分） ------------------------------
@@ -37,6 +37,11 @@ export interface DuoweiDoc {
 
 export const docCache = new Map<string, { mtime: number; doc: DuoweiDoc | null }>();
 
+/** 插件卸载时释放 .duowei 文档缓存。 */
+export function clearDocCache(): void {
+  docCache.clear();
+}
+
 export async function loadDoc(app: App, path: string): Promise<DuoweiDoc | null> {
   const file = app.vault.getAbstractFileByPath(path);
   if (!(file instanceof TFile)) {
@@ -51,7 +56,7 @@ export async function loadDoc(app: App, path: string): Promise<DuoweiDoc | null>
     const parsed = JSON.parse(await app.vault.cachedRead(file)) as Partial<DuoweiDoc>;
     if (parsed && Array.isArray(parsed.fields) && Array.isArray(parsed.records)) doc = parsed as DuoweiDoc;
   } catch (error) {
-    console.error("Home Pages: failed to parse .duowei", error);
+    console.error("Home Deck: failed to parse .duowei", error);
   }
   docCache.set(path, { mtime: file.stat.mtime, doc });
   return doc;
@@ -118,8 +123,7 @@ export function dateKeyOf(value: unknown): string | null {
     parsed = Date.parse(text);
   }
   if (!Number.isFinite(parsed)) return null;
-  const date = new Date(parsed);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return toIsoDate(new Date(parsed));
 }
 
 export function selectRecords(doc: DuoweiDoc, config: DuoweiConfig): DuoweiRecord[] {

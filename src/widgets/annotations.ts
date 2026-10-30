@@ -1,4 +1,5 @@
 import { App, Notice, Setting, normalizePath, setIcon } from "obsidian";
+import type { MtimeService } from "../core/ports";
 import { formatRelativeTime } from "../utils/date";
 import { basenameOf } from "../utils/vault";
 import { findCommandId, readJsonFile, readPluginData, resourceUrl, runCommand } from "../utils/plugins";
@@ -145,10 +146,10 @@ function resolveFolders(app: App, config: AnnotationsConfig, data: Record<string
   };
 }
 
-export async function loadAnnotations(app: App, config: AnnotationsConfig): Promise<AnnotationData> {
-  const pluginData = await readPluginData(app, config.pluginId);
+export async function loadAnnotations(app: App, config: AnnotationsConfig, cache?: MtimeService): Promise<AnnotationData> {
+  const pluginData = await readPluginData(app, config.pluginId, cache);
   const folders = resolveFolders(app, config, pluginData);
-  const index = await readJsonFile<CenterIndex>(app, `${folders.center}/index.json`);
+  const index = await readJsonFile<CenterIndex>(app, `${folders.center}/index.json`, cache);
   const empty: AnnotationData = { items: [], inbox: 0, archived: 0, collections: [], questions: 0, due: 0, cards: 0, todayNew: 0, questionItems: [], newQuestions: 0, hardQuestions: 0, masteredQuestions: 0, reviewedToday: 0, ready: false };
   if (!index?.records) return empty;
 
@@ -158,7 +159,7 @@ export async function loadAnnotations(app: App, config: AnnotationsConfig): Prom
     if (await app.vault.adapter.exists(folders.mdSource)) {
       const listing = await app.vault.adapter.list(folders.mdSource);
       for (const file of listing.files.filter((path) => path.endsWith(".md-source.json"))) {
-        const parsed = await readJsonFile<MdSourceFile>(app, file);
+        const parsed = await readJsonFile<MdSourceFile>(app, file, cache);
         for (const annotation of parsed?.annotations ?? []) {
           mdSource.set(annotation.id, {
             sourcePath: parsed?.sourcePath ?? "",
@@ -170,7 +171,7 @@ export async function loadAnnotations(app: App, config: AnnotationsConfig): Prom
       }
     }
   } catch (error) {
-    console.error("Home Pages: failed to read md-source annotations", error);
+    console.error("Home Deck: failed to read md-source annotations", error);
   }
 
   const collectionsById = new Map((index.collections ?? []).map((collection) => [collection.id, collection]));
@@ -231,7 +232,7 @@ export async function loadAnnotations(app: App, config: AnnotationsConfig): Prom
   }
   items.sort((a, b) => b.time - a.time);
 
-  const bank = await readJsonFile<QuestionBank>(app, folders.center + "/question-bank.json");
+  const bank = await readJsonFile<QuestionBank>(app, folders.center + "/question-bank.json", cache);
   const now = Date.now();
   const questionDayStart = new Date();
   questionDayStart.setHours(0, 0, 0, 0);
@@ -275,7 +276,7 @@ export async function loadAnnotations(app: App, config: AnnotationsConfig): Prom
     });
   }
   questionItems.sort((a, b) => b.updatedAt - a.updatedAt);
-  const cardsFile = await readJsonFile<CardsFile>(app, `${folders.cards}/cards.json`);
+  const cardsFile = await readJsonFile<CardsFile>(app, `${folders.cards}/cards.json`, cache);
 
   return {
     items,
@@ -524,6 +525,10 @@ export const annotationsWidget: WidgetDefinition<AnnotationsConfig> = {
   icon: "highlighter",
   accent: "#f59e0b",
   defaultSize: { w: 6, h: 7 },
+  refreshScope: (config) => {
+    const folders = [config.centerFolder, config.mdSourceFolder, config.cardsFolder].filter((folder) => folder.trim());
+    return folders.length ? { folders } : null;
+  },
   defaultConfig: () => ({ ...DEFAULTS }),
   normalizeConfig: (raw) => {
     const config = normalizeWith(DEFAULTS, raw);
@@ -537,7 +542,7 @@ export const annotationsWidget: WidgetDefinition<AnnotationsConfig> = {
 
   async render(body, ctx) {
     const { app, config } = ctx;
-    const data = await loadAnnotations(app, config);
+    const data = await loadAnnotations(app, config, ctx.services.mtime);
     if (!ctx.isAlive()) return;
     // 批注数据可能位于 .obsidian 下（无 vault 事件），定时刷新兜底。
     ctx.registerInterval(() => ctx.rerender(), 5 * 60 * 1000);

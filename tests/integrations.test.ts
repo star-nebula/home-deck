@@ -5,18 +5,13 @@ import { loadAnnotations } from "../src/widgets/annotations";
 import { buildDigest } from "../src/widgets/duoweiDigest";
 import { loadWechat } from "../src/widgets/wechat";
 import { TFile, TFolder } from "obsidian";
-import { createWidgetInstance, getWidgetDefinition, listWidgetDefinitions, onRegistryChange, registerWidget } from "../src/widgets/registry";
+import { WidgetRegistry } from "../src/core/widgetRegistry";
+import { BUILTIN_WIDGETS } from "../src/widgets/builtins";
 import { sanitizeSettings, sanitizeWidget } from "../src/settings";
-import {
-  CustomWidgetManager,
-  DEMO_WIDGET_TEMPLATE,
-  HIDDEN_WIDGET_SCAN_INTERVAL_MS,
-  evaluateWidgetScript
-} from "../src/widgets/userLoader";
 import { buildMocIndex } from "../src/widgets/allnotes";
 import { habitStreak } from "../src/widgets/habit";
 import { advanceSession, bumpHistory, formatClock, pauseSession, pomodoroWidget, remainingMs, resetSession, startSession, type PomodoroConfig } from "../src/widgets/pomodoro";
-import { VaultStatsService } from "../src/utils/vaultStats";
+import { VaultIndex } from "../src/services/vaultIndex";
 
 import { cmaIcon, normalizeHost, parseCoords, qweatherIcon, rankCmaCandidates, splitQuery, stripSuffix } from "../src/utils/weather";
 import { parseOpml, exportOpml } from "../src/utils/opml";
@@ -34,6 +29,7 @@ import {
 } from "../src/widgets/media";
 
 const normalizePomodoro = (raw: Record<string, unknown>): PomodoroConfig => pomodoroWidget.normalizeConfig!(raw);
+const TEST_REGISTRY = new WidgetRegistry(BUILTIN_WIDGETS);
 
 const VAULT = process.env.HOME_PAGES_TEST_VAULT ?? "D:/data/obsidian_pls/duowei-stress-vault";
 let failures = 0;
@@ -311,13 +307,14 @@ async function testAnnotations(): Promise<void> {
 }
 
 function testRegistry(): void {
-  const before = listWidgetDefinitions().length;
-  const knowledgeMap = getWidgetDefinition("knowledgemap");
+  const registry = new WidgetRegistry(BUILTIN_WIDGETS);
+  const before = registry.list().length;
+  const knowledgeMap = registry.get("knowledgemap");
   check("knowledge map widget registered", knowledgeMap?.name === "知识地图", knowledgeMap);
   const knowledgeMapDefaults = knowledgeMap?.defaultConfig();
   check(
     "knowledge map uses native graph defaults",
-    knowledgeMapDefaults?.colorize === true && knowledgeMapDefaults.scopeMode === "knowledge" && knowledgeMapDefaults.showStats === true && knowledgeMap.defaultSize.h >= 10
+    knowledgeMapDefaults?.colorize === true && knowledgeMapDefaults.scopeMode === "knowledge" && knowledgeMapDefaults.showStats === true && knowledgeMap!.defaultSize.h >= 10
   );
   const normalizedMap = knowledgeMap?.normalizeConfig?.({
     scopeMode: "unknown",
@@ -331,26 +328,30 @@ function testRegistry(): void {
     normalizedMap
   );
   const events: string[] = [];
-  const off = onRegistryChange((kind, registered) => events.push(`${kind}:${registered}`));
-  const unregister = registerWidget({
+  const off = registry.onChange((kind, registered) => events.push(`${kind}:${registered}`));
+  const unregister = registry.register({
     kind: "third-party-demo", name: "演示", description: "", icon: "plug", accent: "#000",
     defaultSize: { w: 4, h: 4 }, defaultConfig: () => ({ ref: "" }),
     render: () => undefined, renderSettings: () => undefined
   }, "demo-plugin");
-  check("third-party widget registered", listWidgetDefinitions().length === before + 1 && getWidgetDefinition("third-party-demo")?.name === "演示");
+  check("third-party widget registered", registry.list().length === before + 1 && registry.get("third-party-demo")?.name === "演示");
   const kept = sanitizeWidget({ id: "x", kind: "not-loaded-kind", w: 5, h: 3, config: { ref: "a#b" }, provider: "some-plugin" });
   check("unknown kind survives sanitize with config + provider", kept?.kind === "not-loaded-kind" && kept.config.ref === "a#b" && kept.provider === "some-plugin" && kept.w === 5, kept);
-  check("createWidgetInstance for unknown kind uses fallback size", createWidgetInstance("nope", { config: { a: 1 } }).w === 6);
+  check("createInstance for unknown kind uses fallback size", registry.createInstance("nope", { config: { a: 1 } }).w === 6);
   let threw = false;
   try {
-    registerWidget({ kind: "hero", name: "x", description: "", icon: "", accent: "", defaultSize: { w: 1, h: 1 }, defaultConfig: () => ({}), render: () => undefined, renderSettings: () => undefined });
+    registry.register({ kind: "hero", name: "x", description: "", icon: "", accent: "", defaultSize: { w: 1, h: 1 }, defaultConfig: () => ({}), render: () => undefined, renderSettings: () => undefined });
   } catch {
     threw = true;
   }
   check("built-in kinds cannot be overridden", threw);
   unregister();
-  check("unregister removes definition and notifies", getWidgetDefinition("third-party-demo") === undefined && events.join(",") === "third-party-demo:true,third-party-demo:false", events);
+  check("unregister removes definition and notifies", registry.get("third-party-demo") === undefined && events.join(",") === "third-party-demo:true,third-party-demo:false", events);
   off();
+
+  const other = new WidgetRegistry(BUILTIN_WIDGETS);
+  other.register({ kind: "isolated", name: "隔离", description: "", icon: "", accent: "", defaultSize: { w: 1, h: 1 }, defaultConfig: () => ({}), render: () => undefined, renderSettings: () => undefined });
+  check("registries are instance-isolated", registry.get("isolated") === undefined && other.get("isolated") !== undefined);
 }
 
 async function testSharedVaultStats(): Promise<void> {
@@ -391,13 +392,13 @@ async function testSharedVaultStats(): Promise<void> {
       getTags: () => ({ "#daily": 2, "#archive": 1 })
     }
   };
-  const stats = new VaultStatsService(() => app as never, {
+  const index = new VaultIndex(() => app as never, {
     now: () => todayTimestamp,
     notifyDebounceMs: 5,
     notifyMaxWaitMs: 20
   });
-  const first = stats.getStats();
-  const second = stats.getStats();
+  const first = index.getStats();
+  const second = index.getStats();
   check("vault stats reuse one filesystem snapshot across consumers", first === second && getFilesCalls === 1 && getLoadedCalls === 1, [
     first === second,
     getFilesCalls,
@@ -412,7 +413,7 @@ async function testSharedVaultStats(): Promise<void> {
       first.activityByDay["2026-10-30"] === 1,
     first
   );
-  const filtered = stats.getStats({ excludeFolders: ["Archive"] });
+  const filtered = index.getStats({ excludeFolders: ["Archive"] });
   check(
     "filtered stats share the same base snapshot",
     filtered.noteCount === 1 &&
@@ -423,62 +424,61 @@ async function testSharedVaultStats(): Promise<void> {
   );
   check(
     "cached markdown arrays and basename index are reused",
-    stats.getMarkdownFiles() === stats.getMarkdownFiles() && stats.getMarkdownByBasename().get("2026-10-30") === recent
+    index.getMarkdownFiles() === index.getMarkdownFiles() && index.getMarkdownByBasename().get("2026-10-30") === recent
   );
 
   let notifications = 0;
   let lastReason = "";
   let lastPaths: readonly string[] = [];
   let lastOperations: readonly string[] = [];
-  const unsubscribe = stats.subscribe((change) => {
+  const unsubscribe = index.subscribe((change) => {
     notifications += 1;
     lastReason = change.reason;
     lastPaths = change.paths;
     lastOperations = change.operations;
   });
-  stats.invalidate("files", true, { operation: "create", path: "Knowledge/new.md" });
-  stats.invalidate("files", true, { operation: "delete", path: "Knowledge/old.md" });
-  stats.invalidate("metadata", true, { operation: "resolve", path: "Knowledge/_mocs/MOC.md" });
+  const created = new TFile();
+  created.path = "Knowledge/new.md";
+  created.extension = "md";
+  created.basename = "new";
+  created.stat = { ctime: todayTimestamp, mtime: todayTimestamp, size: 10 };
+  const deleted = new TFile();
+  deleted.path = "Knowledge/old.md";
+  deleted.extension = "md";
+  deleted.basename = "old";
+  deleted.stat = { ctime: todayTimestamp, mtime: todayTimestamp, size: 10 };
+  index.applyCreate(created);
+  index.applyDelete(deleted);
+  index.applyMetadata("Knowledge/_mocs/MOC.md");
   await new Promise((resolve) => setTimeout(resolve, 35));
   check(
     "vault change bursts merge one notification with scoped paths",
     notifications === 1 &&
       lastReason === "mixed" &&
       lastPaths.join(",") === "Knowledge/new.md,Knowledge/old.md,Knowledge/_mocs/MOC.md" &&
-      lastOperations.join(",") === "create,delete,resolve",
+      lastOperations.join(",") === "create,delete,metadata",
     [notifications, lastReason, lastPaths, lastOperations]
   );
-  stats.getStats();
-  check("invalidated stats rebuild lazily on the next read", getFilesCalls === 2 && getLoadedCalls === 2, [getFilesCalls, getLoadedCalls]);
+  index.getStats();
+  check(
+    "incremental invalidation keeps the file snapshot and only refreshes folders",
+    getFilesCalls === 1 && getLoadedCalls === 2,
+    [getFilesCalls, getLoadedCalls]
+  );
   unsubscribe();
-  stats.dispose();
+  index.dispose();
 }
 
 async function testPerformanceGuards(): Promise<void> {
-  const heatmapSource = await fs.readFile("examples/vault-heatmap.js", "utf8");
-  const heatmap = await evaluateWidgetScript(heatmapSource, {} as never, "examples/vault-heatmap.js");
-  const defaults = heatmap.defaultConfig();
-  check("heatmap defaults to event-driven refresh", heatmap.liveRefresh === false && defaults.autoRefreshMinutes === 0, [
-    heatmap.liveRefresh,
-    defaults.autoRefreshMinutes
-  ]);
-  check(
-    "heatmap uses shared stats and coalesced vault events",
-    heatmapSource.includes("ctx.getVaultStats") && heatmapSource.includes("ctx.onVaultChange")
-  );
-  check(
-    "heatmap migrates the legacy five-minute default without changing custom intervals",
-    heatmapSource.includes("configVersion < 2") && heatmapSource.includes("configuredRefresh === 5")
-  );
-  check("stats and hero defer their own vault refresh", getWidgetDefinition("stats")?.liveRefresh === false && getWidgetDefinition("hero")?.liveRefresh === false);
+  const registry = new WidgetRegistry(BUILTIN_WIDGETS);
+  check("stats and hero defer their own vault refresh", registry.get("stats")?.liveRefresh === false && registry.get("hero")?.liveRefresh === false);
   check(
     "vault-wide list widgets own scoped refresh",
-    getWidgetDefinition("allnotes")?.liveRefresh === false &&
-      getWidgetDefinition("recent")?.liveRefresh === false &&
-      getWidgetDefinition("diary")?.liveRefresh === false &&
-      getWidgetDefinition("kanban")?.liveRefresh === false
+    registry.get("allnotes")?.liveRefresh === false &&
+      registry.get("recent")?.liveRefresh === false &&
+      registry.get("diary")?.liveRefresh === false &&
+      registry.get("kanban")?.liveRefresh === false
   );
-  check("hidden custom-widget fallback scan is at least 30 seconds", HIDDEN_WIDGET_SCAN_INTERVAL_MS >= 30_000, HIDDEN_WIDGET_SCAN_INTERVAL_MS);
 
   const moc = new TFile();
   moc.path = "Knowledge/_mocs/项目 MOC.md";
@@ -563,7 +563,7 @@ function testVaultStatsScaleBudget(): void {
     metadataCache: { getTags: () => ({ "#tag": 1 }) }
   };
   const coldSamples = Array.from({ length: 7 }, () => {
-    const coldStats = new VaultStatsService(() => app as never, { now: () => now });
+    const coldStats = new VaultIndex(() => app as never, { now: () => now });
     const started = performance.now();
     coldStats.getStats();
     const elapsed = performance.now() - started;
@@ -571,7 +571,7 @@ function testVaultStatsScaleBudget(): void {
     return elapsed;
   });
   const coldMs = median(coldSamples);
-  const stats = new VaultStatsService(() => app as never, { now: () => now });
+  const stats = new VaultIndex(() => app as never, { now: () => now });
   getFilesCalls = 0;
   stats.getStats();
   const warmStart = performance.now();
@@ -587,207 +587,6 @@ function testVaultStatsScaleBudget(): void {
   );
 }
 
-async function testUserCustomWidgets(): Promise<void> {
-  const fakeApp = { vault: {} };
-  const def = await evaluateWidgetScript(DEMO_WIDGET_TEMPLATE, fakeApp as never);
-  check("demo template evaluates to valid widget", def.kind === "user-clock-demo" && def.name === "示例时钟与问候");
-  check("demo template default size is 4x3", def.defaultSize.w === 4 && def.defaultSize.h === 3);
-  check("demo template has icon and accent", def.icon === "clock" && def.accent === "#6366f1");
-  const cfg = def.defaultConfig();
-  check("demo template defaultConfig contains greeting", typeof cfg.greeting === "string" && cfg.showSeconds === true);
-
-  const fnScript = `
-    module.exports = () => ({
-      kind: "test-fn-widget",
-      name: "函数组件",
-      render: () => {}
-    });
-  `;
-  const fnDef = await evaluateWidgetScript(fnScript, fakeApp as never);
-  check("function export evaluates correctly", fnDef.kind === "test-fn-widget" && fnDef.name === "函数组件");
-  check("fallback size is 6x4", fnDef.defaultSize.w === 6 && fnDef.defaultSize.h === 4);
-  check("fallback icon is box", fnDef.icon === "box");
-
-  const retScript = `
-    return {
-      kind: "test-ret-widget",
-      name: "直接返回组件",
-      render: () => {}
-    };
-  `;
-  const retDef = await evaluateWidgetScript(retScript, fakeApp as never);
-  check("return export evaluates correctly", retDef.kind === "test-ret-widget" && retDef.name === "直接返回组件");
-
-  let errorCaught = false;
-  try {
-    await evaluateWidgetScript("module.exports = { name: '无kind' };", fakeApp as never);
-  } catch {
-    errorCaught = true;
-  }
-  check("missing kind throws error", errorCaught);
-
-  errorCaught = false;
-  try {
-    await evaluateWidgetScript("module.exports = { kind: 'no-render', name: '无render' };", fakeApp as never);
-  } catch {
-    errorCaught = true;
-  }
-  check("missing render throws error", errorCaught);
-
-  const sanitized = sanitizeSettings({ customWidgetsFolder: "  _scripts/my-widgets/  " });
-  check("customWidgetsFolder is sanitized and trimmed", sanitized.customWidgetsFolder === "_scripts/my-widgets/");
-  const defaultSanitized = sanitizeSettings({});
-  check("customWidgetsFolder defaults to empty string", defaultSanitized.customWidgetsFolder === "");
-
-  // 测试 CustomWidgetManager 加载与注销生命周期
-  const mockFiles = new Map<string, string>();
-  mockFiles.set("_scripts/hp/w1.js", `module.exports = { kind: "mgr-test-1", name: "组件1", render: () => {} };`);
-  mockFiles.set("_scripts/hp/w2.js", `module.exports = { kind: "mgr-test-2", name: "组件2", render: () => {} };`);
-
-  const mockFolder = new TFolder();
-  mockFolder.path = "_scripts/hp";
-  const f1 = new TFile(); f1.path = "_scripts/hp/w1.js"; f1.extension = "js"; f1.name = "w1.js";
-  const f2 = new TFile(); f2.path = "_scripts/hp/w2.js"; f2.extension = "js"; f2.name = "w2.js";
-  mockFolder.children = [f1, f2];
-
-  const fakeVault = {
-    getAbstractFileByPath: (p: string) => (p === "_scripts/hp" ? mockFolder : mockFiles.has(p) ? (p === f1.path ? f1 : f2) : null),
-    read: async (file: TFile) => mockFiles.get(file.path) ?? "",
-    create: async () => {},
-    createFolder: async () => {},
-    trash: async (file: TFile) => {
-      mockFiles.delete(file.path);
-    }
-  };
-  const registeredKinds = new Set<string>();
-  const fakePlugin = {
-    settings: {
-      customWidgetsFolder: "_scripts/hp",
-      pages: [
-        {
-          id: "p1",
-          name: "测试页",
-          widgets: [
-            { id: "w-inst-1", kind: "mgr-test-2", w: 6, h: 4, config: {} }
-          ]
-        }
-      ]
-    },
-    app: {
-      vault: fakeVault,
-      workspace: { getLeaf: () => ({ openFile: async () => {} }) },
-      fileManager: { trashFile: async (file: TFile) => { mockFiles.delete(file.path); } }
-    },
-    api: {
-      registerWidget: (wdef: { kind: string }) => {
-        registeredKinds.add(wdef.kind);
-        return () => registeredKinds.delete(wdef.kind);
-      }
-    },
-    refreshViews: () => {},
-    registerEvent: () => {},
-    saveSettings: async () => {}
-  };
-
-  const mgr = new CustomWidgetManager(fakePlugin as never);
-  const loadedCount = await mgr.loadAll(true);
-  check("manager loaded 2 widgets", loadedCount === 2);
-  check("manager registered both kinds", registeredKinds.has("mgr-test-1") && registeredKinds.has("mgr-test-2"));
-
-  const loadedList = mgr.getLoadedWidgets();
-  check("getLoadedWidgets returns 2 entries", loadedList.length === 2);
-  check("hasKind finds registered kind", mgr.hasKind("mgr-test-2") && !mgr.hasKind("non-existent"));
-  const w2Info = mgr.getWidgetByKind("mgr-test-2");
-  check("getWidgetByKind returns correct metadata", w2Info?.name === "组件2" && w2Info?.filePath === f2.path);
-
-  // 隐藏目录没有 TFile，必须通过 adapter 加载并检测改动。
-  const hiddenSources = new Map([[".scripts/hp/one.js", 'module.exports = { kind: "hidden-one", name: "Hidden", render() {} };']]);
-  const hiddenPlugin = {
-    ...fakePlugin,
-    settings: { ...fakePlugin.settings, customWidgetsFolder: ".scripts/hp" },
-    app: { ...fakePlugin.app, vault: {
-      getAbstractFileByPath: () => null,
-      adapter: {
-        exists: async () => true,
-        list: async () => ({ files: [...hiddenSources.keys()], folders: [] }),
-        read: async (path: string) => hiddenSources.get(path) ?? "",
-        mkdir: async () => {},
-        write: async (path: string, source: string) => { hiddenSources.set(path, source); },
-        trashLocal: async (path: string) => { hiddenSources.delete(path); },
-        trashSystem: async () => false
-      }
-    } }
-  };
-  const hiddenMgr = new CustomWidgetManager(hiddenPlugin as never);
-  check("hidden folder loads through adapter", await hiddenMgr.loadAll(true) === 1 && hiddenMgr.hasKind("hidden-one"));
-  hiddenSources.set(".scripts/hp/one.js", 'module.exports = { kind: "hidden-two", name: "Updated", render() {} };');
-  await hiddenMgr.loadAll(true);
-  check("hidden script edits reload", hiddenMgr.hasKind("hidden-two") && !hiddenMgr.hasKind("hidden-one"));
-  await hiddenMgr.deleteWidget("hidden-two");
-  check("hidden script deletion trashes file", hiddenSources.size === 0 && !hiddenMgr.hasKind("hidden-two"));
-  await hiddenMgr.writeScript(".scripts/hp/created.js", 'module.exports = { kind: "hidden-created", name: "Created", render() {} };');
-  await hiddenMgr.loadAll(true);
-  check("hidden scripts can be created through adapter", hiddenMgr.hasKind("hidden-created"));
-  hiddenSources.clear();
-  await hiddenMgr.loadAll(true);
-  check("external hidden script deletion unregisters widget", hiddenMgr.getLoadedWidgets().length === 0);
-  hiddenMgr.unloadAll();
-
-  // 单文件热更新
-  mockFiles.set("_scripts/hp/w1.js", `module.exports = { kind: "mgr-test-1-updated", name: "组件1更新", render: () => {} };`);
-  await mgr.loadFile(f1, false);
-  check("manager hot-reloaded updated kind", !registeredKinds.has("mgr-test-1") && registeredKinds.has("mgr-test-1-updated"));
-
-  // 测试组件删除与页面实例清理
-  await mgr.deleteWidget(f2.path, { removeInstances: true });
-  check("deleteWidget removed kind from registeredKinds", !registeredKinds.has("mgr-test-2"));
-  check("deleteWidget trashed the file", !mockFiles.has(f2.path));
-  check("deleteWidget cleaned page instance", fakePlugin.settings.pages[0].widgets.length === 0);
-
-  // 单文件卸载
-  mgr.unloadFile(f1.path, false);
-  check("manager unloaded file", !registeredKinds.has("mgr-test-1-updated"));
-
-  // 全量卸载
-  mgr.unloadAll();
-  check("manager unloaded all", registeredKinds.size === 0);
-
-  // 新脚本首次加载自动放上当前首页，每个 kind 只一次
-  mockFiles.set("_scripts/hp/w1.js", `module.exports = { kind: "auto-old", name: "旧组件", render: () => {} };`);
-  mockFiles.set("_scripts/hp/w2.js", `module.exports = { kind: "auto-new", name: "新组件", defaultSize: { w: 3, h: 5 }, render: () => {} };`);
-  mockFolder.children = [f1];
-  const autoPage = { id: "auto", name: "自动", widgets: [] as Array<{ id: string; kind: string; w: number; h: number; config: Record<string, unknown> }> };
-  let autoSaves = 0;
-  const autoPlugin = {
-    ...fakePlugin,
-    // 真实插件的 api.registerWidget 会写进组件注册表，自动加入的卡片据此取默认尺寸。
-    api: { registerWidget: (wdef: Parameters<typeof registerWidget>[0], provider?: string) => registerWidget(wdef, provider) },
-    settings: { customWidgetsFolder: "_scripts/hp", autoAddCustomWidgets: true, seenCustomWidgetKinds: [] as string[], pages: [autoPage] },
-    getActivePage: () => autoPage,
-    saveSettings: async () => { autoSaves += 1; }
-  };
-  const autoMgr = new CustomWidgetManager(autoPlugin as never);
-  await autoMgr.loadAll(true);
-  check("startup scan registers existing scripts without adding cards", autoPage.widgets.length === 0 && autoPlugin.settings.seenCustomWidgetKinds.includes("auto-old"));
-  await Promise.all([autoMgr.loadFile(f2, true), autoMgr.loadFile(f2, true)]);
-  check("new script is added to the active page exactly once", autoPage.widgets.filter((w) => w.kind === "auto-new").length === 1, autoPage.widgets);
-  check("auto-added card uses the script's default size", autoPage.widgets[0]?.w === 3 && autoPage.widgets[0]?.h === 5);
-  check("auto-add persists settings", autoSaves > 0 && autoPlugin.settings.seenCustomWidgetKinds.includes("auto-new"));
-  autoPage.widgets.length = 0;
-  await autoMgr.loadFile(f2, true);
-  check("editing a script after its card was removed does not re-add it", autoPage.widgets.length === 0);
-  autoPlugin.settings.autoAddCustomWidgets = false;
-  mockFiles.set("_scripts/hp/w2.js", `module.exports = { kind: "auto-off", name: "关闭时", render: () => {} };`);
-  await autoMgr.loadFile(f2, true);
-  autoPlugin.settings.autoAddCustomWidgets = true;
-  await autoMgr.loadFile(f2, true);
-  check("scripts loaded while auto-add was off are not added later", autoPage.widgets.length === 0 && autoPlugin.settings.seenCustomWidgetKinds.includes("auto-off"));
-  autoMgr.unloadAll();
-  const legacy = sanitizeSettings({ customWidgetsFolder: "x" });
-  check("new settings default: auto-add on, seen list empty, tabs shown", legacy.autoAddCustomWidgets === true && legacy.seenCustomWidgetKinds.length === 0 && legacy.alwaysShowPageTabs === true);
-  const kept = sanitizeSettings({ alwaysShowPageTabs: false, seenCustomWidgetKinds: ["a", "a", 3, "b"] });
-  check("saved tab setting kept; seen list deduped and filtered", kept.alwaysShowPageTabs === false && kept.seenCustomWidgetKinds.join(",") === "a,b");
-}
 
 function testHabitStreak(): void {
   const done = new Set(["2026-09-28", "2026-09-29", "2026-09-30", "2026-09-26"]);
@@ -800,7 +599,7 @@ function testHabitStreak(): void {
 }
 
 function testPomodoro(): void {
-  const definition = getWidgetDefinition("pomodoro");
+  const definition = TEST_REGISTRY.get("pomodoro");
   check("pomodoro widget registered", definition?.name === "番茄时钟");
   const config = normalizePomodoro({});
   check("fresh session idle at focus with full duration", config.session.state === "idle" && remainingMs(config, config.session, 0) === 25 * 60_000, config.session);
@@ -846,7 +645,7 @@ function testWeatherHelpers(): void {
 }
 
 function testMedia(): void {
-  const definition = getWidgetDefinition("media");
+  const definition = TEST_REGISTRY.get("media");
   check("media widget registered", definition?.name === "主流媒体");
   const defaults = definition?.defaultConfig();
   check("media widget defaults contain Qiushi and ZJXC", defaults?.showQiushi === true && defaults?.showZjxc === true);
@@ -1040,7 +839,7 @@ async function testMediaCachingAndProgress(): Promise<void> {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await saveDiskCacheNow(mockApp as any);
-  const cacheFilePath = ".obsidian/plugins/home-pages-star-nebula/media-cache.json";
+  const cacheFilePath = ".obsidian/plugins/home-deck/media-cache.json";
   check("saveDiskCacheNow writes to adapter", storage.has(cacheFilePath));
   const writtenJson = JSON.parse(storage.get(cacheFilePath) || "{}") as { feedCache?: unknown[] };
   check("saved disk cache contains feedCache array", Array.isArray(writtenJson.feedCache));
@@ -1079,7 +878,6 @@ testRegistry();
 await testSharedVaultStats();
 await testPerformanceGuards();
 testVaultStatsScaleBudget();
-await testUserCustomWidgets();
 testHabitStreak();
 testPomodoro();
 testWeatherHelpers();

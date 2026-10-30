@@ -23,7 +23,7 @@ Thumbs.db
 # Test and release artifacts
 tests/.out/
 .release-work-*
-home-pages*.zip
+home-deck*.zip
 
 .dev-target
 

@@ -19,6 +19,8 @@ export const noteWidget: WidgetDefinition<NoteConfig> = {
   icon: "file-text",
   accent: "#64748b",
   defaultSize: { w: 6, h: 6 },
+  refreshOnMetadataChange: false,
+  refreshScope: (config) => (config.path ? { paths: [config.path] } : null),
   defaultConfig: () => ({ ...DEFAULTS }),
   normalizeConfig: (raw) => normalizeWith(DEFAULTS, raw),
 

@@ -1,4 +1,5 @@
 import { App, Notice, Setting, TFile, normalizePath, setIcon } from "obsidian";
+import type { MtimeService } from "../core/ports";
 import { formatRelativeTime, todayIso } from "../utils/date";
 import { findCommandId, readJsonFile, readPluginData, resourceUrl, runCommand } from "../utils/plugins";
 import { addNumberSetting, addPathSetting, addSectionHeading } from "../ui/settingHelpers";
@@ -92,12 +93,12 @@ export interface WechatData {
   duowei?: { file: TFile; statusFieldId: string; pendingOptionId: string; doneOptionId: string; kanbanViewId?: string };
 }
 
-export async function loadWechat(app: App, config: WechatConfig): Promise<WechatData> {
+export async function loadWechat(app: App, config: WechatConfig, cache?: MtimeService): Promise<WechatData> {
   if (config.source !== "wechat2ob") {
-    const inbox = await loadDuoweiInbox(app, config);
+    const inbox = await loadDuoweiInbox(app, config, cache);
     if (inbox.ready || config.source === "duowei") return inbox;
   }
-  return loadWechat2ob(app, config);
+  return loadWechat2ob(app, config, cache);
 }
 
 // ---- 多维表格内置微信收件箱 --------------------------------------------------
@@ -147,9 +148,9 @@ function stripLink(value: unknown): string {
   return inner.replace(/\]\]$/, "").split("|")[0].split("#")[0];
 }
 
-export async function loadDuoweiInbox(app: App, config: WechatConfig): Promise<WechatData> {
+export async function loadDuoweiInbox(app: App, config: WechatConfig, cache?: MtimeService): Promise<WechatData> {
   const empty: WechatData = { ready: false, source: "duowei", items: [], today: 0, week: 0, attachments: 0, pending: null, todayNotePath: "", tablePath: "", inboxRoot: "" };
-  const raw = await readPluginData(app, config.duoweiPluginId);
+  const raw = await readPluginData(app, config.duoweiPluginId, cache);
   const settings = (raw?.weixinInbox && typeof raw.weixinInbox === "object" ? raw.weixinInbox : {}) as Record<string, unknown>;
   const savedMap = settings.fieldMap && typeof settings.fieldMap === "object" ? (settings.fieldMap as Record<string, unknown>) : undefined;
   const tablePath = normalizePath(config.duoweiTablePath.trim() || (typeof settings.tablePath === "string" && settings.tablePath ? settings.tablePath : "多维表格/微信收件箱.duowei"));
@@ -281,7 +282,7 @@ function wechat2obSettings(raw: Record<string, unknown> | null): Wechat2obSettin
   };
 }
 
-async function readJournals(app: App, stateFolder: string): Promise<Journal[]> {
+async function readJournals(app: App, stateFolder: string, cache?: MtimeService): Promise<Journal[]> {
   const adapter = app.vault.adapter;
   if (!(await adapter.exists(stateFolder))) return [];
   const streams = (await adapter.list(stateFolder)).folders.filter((folder) => /\/[a-f\d]{64}$/i.test(folder));
@@ -300,7 +301,7 @@ async function readJournals(app: App, stateFolder: string): Promise<Journal[]> {
         if (cached.journal) journals.push(cached.journal);
         continue;
       }
-      const journal = await readJsonFile<Journal>(app, file);
+      const journal = await readJsonFile<Journal>(app, file, cache);
       const valid = journal && journal.format === 1 && journal.message && typeof journal.message.receivedAt === "string" ? journal : null;
       journalCache.set(file, { mtime, journal: valid });
       if (valid) journals.push(valid);
@@ -336,11 +337,11 @@ async function countWechat2obPending(app: App, settings: Wechat2obSettings): Pro
   return { pending, tablePath };
 }
 
-export async function loadWechat2ob(app: App, config: WechatConfig): Promise<WechatData> {
-  const raw = await readPluginData(app, config.pluginId);
+export async function loadWechat2ob(app: App, config: WechatConfig, cache?: MtimeService): Promise<WechatData> {
+  const raw = await readPluginData(app, config.pluginId, cache);
   const settings = wechat2obSettings(raw);
   const stateFolder = normalizePath(config.stateFolder.trim() || `${app.vault.configDir}/plugins/${config.pluginId}/state`);
-  const journals = await readJournals(app, stateFolder);
+  const journals = await readJournals(app, stateFolder, cache);
   const today = todayIso();
   const todayNotePath = settings.noteMode === "file"
     ? settings.fixedNotePath
@@ -451,6 +452,11 @@ export const wechatWidget: WidgetDefinition<WechatConfig> = {
   icon: "message-circle",
   accent: "#16a34a",
   defaultSize: { w: 6, h: 7 },
+  refreshScope: (config) => {
+    const folders = config.stateFolder ? [config.stateFolder] : [];
+    const paths = config.duoweiTablePath ? [config.duoweiTablePath] : [];
+    return folders.length || paths.length ? { folders, paths } : null;
+  },
   defaultConfig: () => ({ ...DEFAULTS, kinds: [] }),
   normalizeConfig: (raw) => {
     const config = normalizeWith(DEFAULTS, raw);
@@ -465,7 +471,7 @@ export const wechatWidget: WidgetDefinition<WechatConfig> = {
 
   async render(body, ctx) {
     const { app, config } = ctx;
-    const data = await loadWechat(app, config);
+    const data = await loadWechat(app, config, ctx.services.mtime);
     if (!ctx.isAlive()) return;
     // WeChat2Ob 的日志在 .obsidian 下没有库事件；定时刷新兜底（表格来源靠 .duowei 变更事件即时刷新）。
     ctx.registerInterval(() => ctx.rerender(), 3 * 60 * 1000);

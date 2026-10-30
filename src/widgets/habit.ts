@@ -187,7 +187,7 @@ async function toggleCheckin(
     await ctx.app.vault.process(file, (source) => updateHabitBlock(source, config.heading, config.habits, habit, checked));
     ctx.rerender();
   } catch (error) {
-    console.error("Home Pages: failed to write habit checkin", error);
+    console.error("Home Deck: failed to write habit checkin", error);
     new Notice("写入日记失败，请检查每日笔记设置");
   }
 }
@@ -197,7 +197,7 @@ async function openDaily(ctx: WidgetContext<HabitConfig>, date: string): Promise
     const file = await getOrCreateDailyNote(ctx.app, date);
     await ctx.openPath(file.path);
   } catch (error) {
-    console.error("Home Pages: failed to open daily note", error);
+    console.error("Home Deck: failed to open daily note", error);
     new Notice("打开日记失败");
   }
 }

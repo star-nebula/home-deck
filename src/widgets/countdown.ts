@@ -18,6 +18,8 @@ export const countdownWidget: WidgetDefinition<CountdownConfig> = {
   icon: "hourglass",
   accent: "#e11d48",
   defaultSize: { w: 4, h: 3 },
+  refreshOnVaultChange: false,
+  refreshOnMetadataChange: false,
   defaultConfig: () => ({ ...DEFAULTS }),
   normalizeConfig: (raw) => {
     const config = normalizeWith(DEFAULTS, raw);

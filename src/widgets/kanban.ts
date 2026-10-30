@@ -226,7 +226,7 @@ async function updateTask(ctx: WidgetContext<KanbanConfig>, record: TaskRecord, 
   try {
     await ctx.app.vault.process(file, (content) => rewriteTaskLine(content, { line: record.line, expected: record.raw, ...patch }));
   } catch (error) {
-    console.error("Home Pages: failed to update task", error);
+    console.error("Home Deck: failed to update task", error);
     new Notice(error instanceof Error ? error.message : "更新任务失败");
   }
   ctx.rerender();
@@ -246,7 +246,7 @@ async function deleteTask(ctx: WidgetContext<KanbanConfig>, record: TaskRecord):
     });
     new Notice("已删除任务行");
   } catch (error) {
-    console.error("Home Pages: failed to delete task", error);
+    console.error("Home Deck: failed to delete task", error);
     new Notice(error instanceof Error ? error.message : "删除任务失败");
   }
   ctx.rerender();
@@ -276,7 +276,7 @@ async function addTask(ctx: WidgetContext<KanbanConfig>, status: TaskStatus, tex
       return `${trimmed ? `${trimmed}\n` : ""}- [${statusChar(status)}] ${text}\n`;
     });
   } catch (error) {
-    console.error("Home Pages: failed to add task", error);
+    console.error("Home Deck: failed to add task", error);
     new Notice("添加待办失败");
   }
   ctx.rerender();

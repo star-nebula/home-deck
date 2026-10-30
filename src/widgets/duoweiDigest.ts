@@ -1,5 +1,5 @@
 import { App, TFile } from "obsidian";
-import { todayIso } from "../utils/date";
+import { toIsoDate, todayIso } from "../utils/date";
 import { isExcluded, isInScope } from "../utils/vault";
 import { formatValue, loadDoc, type DuoweiDoc, type DuoweiField, type DuoweiRecord } from "./duoweiCore";
 
@@ -96,7 +96,7 @@ function dateKey(value: unknown): { key: string; text: string } | null {
 }
 
 function localKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return toIsoDate(date);
 }
 
 function shiftKey(days: number): string {

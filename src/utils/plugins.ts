@@ -1,4 +1,5 @@
 import { App, Keymap, TFile, normalizePath } from "obsidian";
+import type { MtimeService } from "../core/ports";
 
 type PluginsApp = App & {
   plugins?: {
@@ -35,25 +36,22 @@ export function runCommand(app: App, id: string): boolean {
 }
 
 /** 读取某个插件的 data.json（位于 .obsidian 下，vault API 看不见，走 adapter）。 */
-export async function readPluginData(app: App, pluginId: string): Promise<Record<string, unknown> | null> {
-  const path = normalizePath(`${app.vault.configDir}/plugins/${pluginId}/data.json`);
-  try {
-    if (!(await app.vault.adapter.exists(path))) return null;
-    const parsed = JSON.parse(await app.vault.adapter.read(path)) as unknown;
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
-  } catch (error) {
-    console.error(`Home Pages: failed to read data.json of ${pluginId}`, error);
-    return null;
-  }
+export async function readPluginData(
+  app: App,
+  pluginId: string,
+  cache?: MtimeService
+): Promise<Record<string, unknown> | null> {
+  return readJsonFile<Record<string, unknown>>(app, `${app.vault.configDir}/plugins/${pluginId}/data.json`, cache);
 }
 
-export async function readJsonFile<T>(app: App, path: string): Promise<T | null> {
+export async function readJsonFile<T>(app: App, path: string, cache?: MtimeService): Promise<T | null> {
   const normalized = normalizePath(path);
+  if (cache) return cache.readJson<T>(normalized);
   try {
     if (!(await app.vault.adapter.exists(normalized))) return null;
     return JSON.parse(await app.vault.adapter.read(normalized)) as T;
   } catch (error) {
-    console.error(`Home Pages: failed to read ${normalized}`, error);
+    console.error(`Home Deck: failed to read ${normalized}`, error);
     return null;
   }
 }

@@ -5,6 +5,7 @@ import { addNumberSetting, addPathSetting, addSectionHeading } from "../ui/setti
 import { renderEmpty } from "../ui/dom";
 import { ConfirmModal, PromptModal } from "../ui/modals";
 import { parseOpml, exportOpml } from "../utils/opml";
+import { PLUGIN_ID } from "../core/identity";
 import { WidgetDefinition, clampInt, normalizeWith } from "./types";
 
 export interface CustomFeed {
@@ -548,6 +549,18 @@ const qiushiIssueStore = new Map<string, string>();
 let isDiskCacheLoaded = false;
 let diskSaveTimer: number | null = null;
 
+/** 插件卸载时清空媒体缓存并取消待写盘定时器，避免卸载后仍写盘。 */
+export function disposeMediaCache(): void {
+  if (diskSaveTimer !== null) {
+    window.clearTimeout(diskSaveTimer);
+    diskSaveTimer = null;
+  }
+  isDiskCacheLoaded = false;
+  cacheStore.clear();
+  feedCacheStore.clear();
+  qiushiIssueStore.clear();
+}
+
 function stripItemForCache(item: MediaItem): MediaItem {
   return {
     id: item.id,
@@ -573,9 +586,20 @@ export async function loadDiskCache(app: App): Promise<void> {
     if (!app?.vault?.adapter) return;
     const configDir = app.vault.configDir;
     if (!configDir) return;
-    const cachePath = normalizePath(`${configDir}/plugins/home-pages-star-nebula/${DISK_CACHE_FILE}`);
-    const legacyPath = normalizePath(`${configDir}/plugins/home-pages/${DISK_CACHE_FILE}`);
-    const readFrom = (await app.vault.adapter.exists(cachePath)) ? cachePath : (await app.vault.adapter.exists(legacyPath)) ? legacyPath : cachePath;
+    const cachePath = normalizePath(`${configDir}/plugins/${PLUGIN_ID}/${DISK_CACHE_FILE}`);
+    const legacyPaths = [
+      normalizePath(`${configDir}/plugins/home-pages-star-nebula/${DISK_CACHE_FILE}`),
+      normalizePath(`${configDir}/plugins/home-pages/${DISK_CACHE_FILE}`)
+    ];
+    let readFrom = cachePath;
+    if (!(await app.vault.adapter.exists(cachePath))) {
+      for (const legacy of legacyPaths) {
+        if (await app.vault.adapter.exists(legacy)) {
+          readFrom = legacy;
+          break;
+        }
+      }
+    }
 
     const text = await app.vault.adapter.read(readFrom);
     const parsed = JSON.parse(text) as {
@@ -606,7 +630,7 @@ export async function loadDiskCache(app: App): Promise<void> {
       }
     }
   } catch (err) {
-    console.warn("Home Pages: 加载媒体磁盘缓存失败", err);
+    console.warn("Home Deck: 加载媒体磁盘缓存失败", err);
   }
 }
 
@@ -616,7 +640,7 @@ export async function saveDiskCacheNow(app: App): Promise<void> {
     if (!app?.vault?.adapter) return;
     const configDir = app.vault.configDir;
     if (!configDir) return;
-    const cacheFolder = normalizePath(`${configDir}/plugins/home-pages-star-nebula`);
+    const cacheFolder = normalizePath(`${configDir}/plugins/${PLUGIN_ID}`);
     const cachePath = normalizePath(`${cacheFolder}/${DISK_CACHE_FILE}`);
 
     const feedEntries: Array<[string, FeedCacheEntry]> = [];
@@ -646,10 +670,14 @@ export async function saveDiskCacheNow(app: App): Promise<void> {
       lastMediaData: lastMediaMap
     });
 
-    await app.vault.adapter.mkdir(cacheFolder);
+    try {
+      await app.vault.adapter.mkdir(cacheFolder);
+    } catch {
+      // 目录已存在时忽略。
+    }
     await app.vault.adapter.write(cachePath, payload);
   } catch (err) {
-    console.warn("Home Pages: 保存媒体磁盘缓存失败", err);
+    console.warn("Home Deck: 保存媒体磁盘缓存失败", err);
   }
 }
 
@@ -790,7 +818,7 @@ export async function syncMediaData(config: MediaConfig, options: SyncOptions = 
           }
           return articles;
         } catch (err) {
-          console.warn("Home Pages: 加载《求是》杂志失败", err);
+          console.warn("Home Deck: 加载《求是》杂志失败", err);
           if (cached?.items?.length) {
             qiushiIssueName = qiushiIssueStore.get(cacheId) || "";
             return cached.items;
@@ -823,7 +851,7 @@ export async function syncMediaData(config: MediaConfig, options: SyncOptions = 
           }
           return articles;
         } catch (err) {
-          console.warn("Home Pages: 加载浙江宣传失败", err);
+          console.warn("Home Deck: 加载浙江宣传失败", err);
           if (cached?.items?.length) return cached.items;
           return [];
         }
@@ -863,7 +891,7 @@ export async function syncMediaData(config: MediaConfig, options: SyncOptions = 
           }
           return feedArticles;
         } catch (err) {
-          console.warn(`Home Pages: 加载自定义订阅源 [${feed.name}] 失败`, err);
+          console.warn(`Home Deck: 加载自定义订阅源 [${feed.name}] 失败`, err);
           if (cached?.items?.length) return cached.items;
           return [];
         }
@@ -924,17 +952,6 @@ export async function syncMediaData(config: MediaConfig, options: SyncOptions = 
 
   cacheStore.set(cacheKey, result);
   return result;
-}
-
-export async function loadMediaData(config: MediaConfig, forceRefresh = false): Promise<MediaData> {
-  const cacheKey = JSON.stringify({ qiushiUrl: config.qiushiUrl, zjxcUrl: config.zjxcUrl, customFeeds: config.customFeeds });
-  if (!forceRefresh) {
-    const cached = cacheStore.get(cacheKey);
-    if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-      return cached;
-    }
-  }
-  return await syncMediaData(config, { forceRefresh });
 }
 
 function renderSkeleton(container: HTMLElement, count = 4): HTMLElement {
@@ -1010,7 +1027,7 @@ export async function clipArticleToVault(app: App, item: MediaItem, folderName: 
       const rawHtml = await fetchText(item.url);
       bodyMd = htmlToMarkdown(rawHtml);
     } catch (err) {
-      console.warn("Home Pages: 获取文章正文失败，使用摘要兜底", err);
+      console.warn("Home Deck: 获取文章正文失败，使用摘要兜底", err);
       bodyMd = item.summary || `> （未能自动拉取全文，请点击下方链接阅读原文）\n\n[阅读原文](${item.url})`;
     }
   }
@@ -1065,6 +1082,8 @@ export const mediaWidget: WidgetDefinition<MediaConfig> = {
   icon: "newspaper",
   accent: "#dc2626",
   defaultSize: { w: 6, h: 7 },
+  refreshOnVaultChange: false,
+  refreshOnMetadataChange: false,
   defaultConfig: () => ({ ...DEFAULTS, customFeeds: [] }),
   normalizeConfig: (raw) => {
     const config = normalizeWith(DEFAULTS, raw);
@@ -1126,8 +1145,10 @@ export const mediaWidget: WidgetDefinition<MediaConfig> = {
       });
     }
 
+    const canSync = (): boolean => ctx.isVisible() && document.visibilityState !== "hidden";
+
     ctx.registerInterval(() => {
-      startSync(true);
+      if (canSync()) startSync(true);
     }, 60 * 60 * 1000);
 
     const wrap = body.createDiv({ cls: "hp-media" });
@@ -1536,7 +1557,7 @@ export const mediaWidget: WidgetDefinition<MediaConfig> = {
     };
 
     // 触发后台静默同步
-    startSync(false);
+    if (canSync()) startSync(false);
   },
 
   renderSettings(container, ctx) {
@@ -1730,7 +1751,7 @@ export const mediaWidget: WidgetDefinition<MediaConfig> = {
         new Notice("当前没有任何自定义订阅源可导出。");
         return;
       }
-      const opmlXml = exportOpml(feeds, "Home Pages 订阅源备份");
+      const opmlXml = exportOpml(feeds, "Home Deck 订阅源备份");
       const blob = new Blob([opmlXml], { type: "application/xml;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = createEl("a", { attr: { href: url, download: `home-pages-subscriptions-${todayIso()}.opml` } });

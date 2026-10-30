@@ -93,7 +93,8 @@ export const diaryWidget: WidgetDefinition<DiaryConfig> = {
     // 未配置时跟随核心「每日笔记」插件的文件夹，让组件开箱即用。
     const folder = config.folder.trim() || settings.folder;
     const entries: DiaryEntry[] = [];
-    for (const file of ctx.getMarkdownFiles()) {
+    const candidates = folder ? ctx.services.vault.getFilesUnder(folder) : ctx.getMarkdownFiles();
+    for (const file of candidates) {
       if (!isInScope(file, folder) || isExcluded(file, config.excludeFolders)) continue;
       const date = dateFromBasename(file.basename);
       if (!date) continue;

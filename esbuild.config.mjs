@@ -25,7 +25,7 @@ async function deployToDevTarget() {
 }
 
 const context = await esbuild.context({
-  banner: { js: "/* Home Pages — Obsidian homepage dashboard plugin */" },
+  banner: { js: "/* Home Deck — Obsidian homepage dashboard plugin */" },
   entryPoints: ["src/main.ts"],
   bundle: true,
   external: ["obsidian", "electron", ...builtinModules],

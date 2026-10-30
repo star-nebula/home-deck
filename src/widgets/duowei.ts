@@ -190,6 +190,11 @@ export const duoweiWidget: WidgetDefinition<DuoweiConfig> = {
   icon: "table-2",
   accent: "#0ea5e9",
   defaultSize: { w: 6, h: 6 },
+  refreshScope: (config) => {
+    const paths = config.path ? [config.path] : [];
+    const folders = config.folder ? [config.folder] : [];
+    return paths.length || folders.length ? { paths, folders } : null;
+  },
   defaultConfig: () => ({ ...DEFAULTS, fields: [], showFields: [] }),
   normalizeConfig: (raw) => {
     const config = normalizeWith(DEFAULTS, raw);

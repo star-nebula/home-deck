@@ -1,5 +1,6 @@
 import { App, normalizePath, Setting, TFile, WorkspaceLeaf } from "obsidian";
 import { addPathSetting, addTextareaSetting } from "../ui/settingHelpers";
+import { isExcludedPath, isPathUnder, normalizeFolders } from "../utils/paths";
 import { normalizeWith, toStringList, type WidgetDefinition } from "./types";
 
 type KnowledgeMapScopeMode = "knowledge" | "knowledge-creation" | "vault" | "custom";
@@ -85,26 +86,6 @@ function pathQuery(path: string): string {
   return `path:"${path.replace(/"/g, '\\"')}"`;
 }
 
-function isWithinPath(filePath: string, folder: string): boolean {
-  return filePath === folder || filePath.startsWith(`${folder}/`);
-}
-
-function isExcluded(filePath: string, excludes: string[]): boolean {
-  return excludes.some((folder) => folder && isWithinPath(filePath, folder));
-}
-
-function normalizeFolders(folders: string[]): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const raw of folders) {
-    const folder = normalizePath(String(raw ?? "").trim()).replace(/\/+$/g, "");
-    if (!folder || seen.has(folder)) continue;
-    seen.add(folder);
-    result.push(folder);
-  }
-  return result;
-}
-
 function resolveScope(config: KnowledgeMapConfig): ResolvedScope {
   if (config.scopeMode === "vault") {
     return { mode: "vault", paths: [], allVault: true, emptyCustom: false };
@@ -123,11 +104,11 @@ function resolveScope(config: KnowledgeMapConfig): ResolvedScope {
 function scopeFiles(files: readonly TFile[], scope: ResolvedScope, excludes: string[]): string[] {
   return files
     .map((file) => file.path)
-    .filter((path) => (scope.allVault || scope.paths.some((folder) => isWithinPath(path, folder))) && !isExcluded(path, excludes));
+    .filter((path) => (scope.allVault || scope.paths.some((folder) => isPathUnder(path, folder))) && !isExcludedPath(path, excludes));
 }
 
 function countWithin(files: string[], folder: string): number {
-  return files.filter((path) => isWithinPath(path, folder)).length;
+  return files.filter((path) => isPathUnder(path, folder)).length;
 }
 
 function dynamicAreaPath(filePath: string, scope: ResolvedScope): string {
@@ -235,7 +216,7 @@ async function mountNativeGraph(
       const legacy = view as NativeGraphView & { setOptions?: (value: ReturnType<typeof options>) => void };
       legacy.setOptions?.(options());
     } catch (error) {
-      console.error("Home Pages: knowledge map filter update failed", error);
+      console.error("Home Deck: knowledge map filter update failed", error);
     }
   };
 
@@ -244,7 +225,7 @@ async function mountNativeGraph(
     try {
       view.onResize?.();
     } catch (error) {
-      console.error("Home Pages: knowledge map resize failed", error);
+      console.error("Home Deck: knowledge map resize failed", error);
     }
   };
 
@@ -390,7 +371,7 @@ export const knowledgeMapWidget: WidgetDefinition<KnowledgeMapConfig> = {
       const structural = change.operations.some((operation) => operation === "create" || operation === "delete" || operation === "rename");
       if (!structural) return;
       const relevant = change.paths.some((path) =>
-        (scope.allVault || scope.paths.some((folder) => isWithinPath(path, folder))) && !isExcluded(path, config.excludeFolders)
+        (scope.allVault || scope.paths.some((folder) => isPathUnder(path, folder))) && !isExcludedPath(path, config.excludeFolders)
       );
       if (relevant) scheduleStats();
     });
@@ -410,7 +391,7 @@ export const knowledgeMapWidget: WidgetDefinition<KnowledgeMapConfig> = {
         handle.setFilter(appliedQuery);
       })
       .catch((error) => {
-        console.error("Home Pages: knowledge map failed to mount native graph", error);
+        console.error("Home Deck: knowledge map failed to mount native graph", error);
         if (!ctx.isAlive()) return;
         graphHost.empty();
         graphHost.createDiv({
@@ -460,7 +441,7 @@ export const knowledgeMapWidget: WidgetDefinition<KnowledgeMapConfig> = {
       onChange: (value) => ctx.update({ excludeFolders: normalizeFolders(toStringList(value)) })
     });
 
-    const areas = knowledgeAreas(app, config, ctx.plugin.vaultStats.getMarkdownFiles());
+    const areas = knowledgeAreas(app, config, ctx.plugin.services.vault.getMarkdownFiles());
     const areaOptions: Record<string, string> = { "": "范围汇总" };
     for (const area of areas) {
       if (!area.path) continue;

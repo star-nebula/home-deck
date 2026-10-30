@@ -1,7 +1,11 @@
 import { HomeView } from "../src/view";
 import { moveBefore } from "../src/ui/sortable";
-import type HomePagesPlugin from "../src/main";
-import type { HomePage, WidgetInstance } from "../src/types";
+import { WidgetRegistry } from "../src/core/widgetRegistry";
+import { LayoutStore } from "../src/core/layoutStore";
+import type { SettingsRepository } from "../src/core/settingsRepository";
+import type { HomeDeckHost } from "../src/core/ports";
+import { BUILTIN_WIDGETS } from "../src/widgets/builtins";
+import type { HomeDeckSettings, HomePage, WidgetInstance } from "../src/core/types";
 import type { WorkspaceLeaf } from "obsidian";
 
 // Minimal Obsidian DOM helpers; the view and sorting controller are the real implementations.
@@ -27,12 +31,63 @@ Object.assign(globalThis, { createDiv: (options: DomElementInfo) => createElemen
 let view: HomeView | undefined;
 let saved: string[][] = [];
 let pages: HomePage[];
-let settings: HomePagesPlugin["settings"];
+let settings: HomeDeckSettings;
+let host: HomeDeckHost;
+
+function createHost(): HomeDeckHost {
+  const registry = new WidgetRegistry(BUILTIN_WIDGETS);
+  const savedForSession = saved;
+  const repo = {
+    get settings() { return settings; },
+    update(mutator: (value: HomeDeckSettings) => void) { mutator(settings); },
+    saveSoon() { return Promise.resolve(); },
+    replace(next: HomeDeckSettings) { settings = next; },
+    async importLegacy() { return { imported: false }; }
+  } as unknown as SettingsRepository;
+  const layout = new LayoutStore(repo, registry);
+  const app = { vault: { on: () => ({}) }, metadataCache: { on: () => ({}) } };
+  return {
+    app: app as never,
+    manifest: { id: "home-deck", name: "Home Deck", version: "1.0.0", minAppVersion: "1.7.2", author: "star-nebula" },
+    get settings() { return settings; },
+    registry,
+    layout,
+    repo,
+    services: {
+      vault: {
+        subscribe: () => () => undefined,
+        getStats: () => ({}) as never,
+        getMarkdownFiles: () => [],
+        getMarkdownByBasename: () => new Map(),
+        getMarkdownSorted: () => [],
+        getFiles: () => [],
+        getAllLoadedFiles: () => [],
+        getFilesUnder: () => [],
+        generation: 0
+      },
+      mtime: {
+        readJson: async () => null,
+        readText: async () => null,
+        invalidate: () => undefined
+      }
+    },
+    register: () => undefined,
+    saveSettings: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      savedForSession.push(layout.getActivePage().widgets.map((item) => item.id));
+    },
+    refreshViews: () => undefined,
+    openHome: async () => undefined,
+    openSettings: () => undefined,
+    getActivePage: () => layout.getActivePage(),
+    getActiveHomeView: () => view ?? null
+  };
+}
 
 async function reset(options: { editing?: boolean; widths?: number[]; count?: number } = {}): Promise<void> {
   await view?.onClose();
   document.body.replaceChildren();
-  const savedForSession = saved = [];
+  saved = [];
   const widths = options.widths ?? Array(options.count ?? 4).fill(6) as number[];
   const widgets: WidgetInstance[] = widths.map((w, index) => ({
     id: String.fromCharCode(97 + index), kind: "test-missing-widget", title: `Card ${index + 1}`, w, h: 4, config: { preserved: index }
@@ -42,26 +97,21 @@ async function reset(options: { editing?: boolean; widths?: number[]; count?: nu
     { id: "p2", name: "Page 2", widgets: [{ ...widgets[0], id: "other", config: { other: true } }] },
     { id: "p3", name: "Page 3", widgets: [] }
   ];
-  settings = { version: 1, pages, activePageId: "p1", rowHeight: 40, gap: 16, maxWidth: 1400,
-    alwaysShowPageTabs: true, openOnStartup: false, openInNewTab: true, customWidgetsFolder: "" };
+  settings = {
+    version: 2,
+    pages,
+    activePageId: "p1",
+    rowHeight: 40,
+    gap: 16,
+    maxWidth: 1400,
+    alwaysShowPageTabs: true,
+    openOnStartup: false,
+    openInNewTab: true
+  };
   const contentEl = document.body.appendChild(createElement("div"));
   contentEl.style.height = "550px";
-  const app = { vault: { on: () => ({}) }, metadataCache: { on: () => ({}) } };
-  const plugin = {
-    settings, getActivePage: () => pages.find((page) => page.id === settings.activePageId)!,
-    saveSettings: async () => { await new Promise((resolve) => setTimeout(resolve, 200)); savedForSession.push(plugin.getActivePage().widgets.map((item) => item.id)); },
-    openSettings: () => undefined,
-    vaultStats: {
-      subscribe: () => () => undefined,
-      getStats: () => ({}),
-      getMarkdownFiles: () => [],
-      getMarkdownByBasename: () => new Map(),
-      getMarkdownSorted: () => [],
-      getFiles: () => [],
-      getAllLoadedFiles: () => []
-    }
-  };
-  view = new HomeView({ app, contentEl, updateHeader: () => undefined } as unknown as WorkspaceLeaf, plugin as unknown as HomePagesPlugin);
+  host = createHost();
+  view = new HomeView({ app: host.app, contentEl, updateHeader: () => undefined } as unknown as WorkspaceLeaf, host);
   await view.onOpen();
   if (options.editing !== false) view.toggleEditing(true);
 }

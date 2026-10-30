@@ -43,6 +43,9 @@ jobs:
       - name: Lint plugin source
         run: npm run lint
 
+      - name: Run tests
+        run: npm test
+
       - name: Build plugin
         run: npm run build
 
@@ -64,7 +67,7 @@ jobs:
             gh release create "$RELEASE_TAG" \
               --repo "$GITHUB_REPOSITORY" \
               --verify-tag \
-              --title "Home Pages ${RELEASE_TAG}" \
+              --title "Home Deck ${RELEASE_TAG}" \
               --generate-notes
           fi
           gh release upload "$RELEASE_TAG" \

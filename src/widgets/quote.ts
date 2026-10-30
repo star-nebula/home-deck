@@ -34,7 +34,7 @@ async function loadQuotes(ctx: { app: App; config: QuoteConfig }): Promise<{ lin
           .filter((line) => line.length > 0 && !line.startsWith("#") && !line.startsWith("---") && !line.startsWith("```"));
         if (lines.length > 0) return { lines, label: file.basename, path };
       } catch (error) {
-        console.error("Home Pages: failed to read quote source", error);
+        console.error("Home Deck: failed to read quote source", error);
       }
     }
   }
@@ -49,6 +49,7 @@ export const quoteWidget: WidgetDefinition<QuoteConfig> = {
   icon: "quote",
   accent: "#16a34a",
   defaultSize: { w: 4, h: 3 },
+  refreshScope: (config) => (config.source ? { paths: [config.source] } : null),
   defaultConfig: () => ({ ...DEFAULTS, quotes: [] }),
   normalizeConfig: (raw) => {
     const config = normalizeWith(DEFAULTS, raw);

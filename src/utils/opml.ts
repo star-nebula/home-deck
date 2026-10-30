@@ -6,11 +6,6 @@ export interface OpmlFeed {
   type?: string;
 }
 
-export interface OpmlCategorySummary {
-  category: string;
-  count: number;
-}
-
 /**
  * 规范化分类名称：
  * - 如果多层分类以 Follow 默认的 "Articles" 开头（如 Articles / 科技），则简化为 "科技"
@@ -169,7 +164,7 @@ export function parseOpml(xmlText: string): OpmlFeed[] {
  */
 export function exportOpml(
   feeds: Array<{ name: string; url: string; category?: string; htmlUrl?: string; type?: string }>,
-  title = "Home Pages Subscriptions"
+  title = "Home Deck Subscriptions"
 ): string {
   const now = new Date().toUTCString();
 

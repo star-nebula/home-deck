@@ -1,9 +1,9 @@
 {
-	"id": "home-pages-star-nebula",
-	"name": "Home Pages",
-	"version": "0.3.1",
+	"id": "home-deck",
+	"name": "Home Deck",
+	"version": "1.0.0",
 	"minAppVersion": "1.7.2",
-	"description": "Customizable homepage dashboard with greeting banners, recent notes, quick access, countdowns, pomodoro timer, daily quotes, habits, task kanban, and vault statistics.",
+	"description": "A fast, customizable homepage dashboard for Obsidian with banners, recent notes, quick access, countdowns, pomodoro, quotes, habits, kanban, vault statistics, and optional integrations.",
 	"author": "star-nebula",
 	"authorUrl": "https://github.com/star-nebula",
 	"isDesktopOnly": false

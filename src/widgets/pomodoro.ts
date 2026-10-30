@@ -1,5 +1,5 @@
 import { Notice, Setting, setIcon } from "obsidian";
-import type HomePagesPlugin from "../main";
+import type { HomeDeckHost } from "../core/ports";
 import type { WidgetInstance } from "../types";
 import { toIsoDate, todayIso } from "../utils/date";
 import { addNumberSetting } from "../ui/settingHelpers";
@@ -178,9 +178,9 @@ export function formatClock(ms: number): string {
 // ---- 后台定时器：随插件存活，首页关掉了也会到点提醒 ----------------------------
 
 const timers = new Map<string, number>();
-let boundPlugin: HomePagesPlugin | null = null;
+let boundPlugin: HomeDeckHost | null = null;
 
-function bindPlugin(plugin: HomePagesPlugin): void {
+function bindPlugin(plugin: HomeDeckHost): void {
   if (boundPlugin === plugin) return;
   boundPlugin = plugin;
   plugin.register(() => {
@@ -190,7 +190,7 @@ function bindPlugin(plugin: HomePagesPlugin): void {
   });
 }
 
-function findWidget(plugin: HomePagesPlugin, widgetId: string): WidgetInstance | undefined {
+function findWidget(plugin: HomeDeckHost, widgetId: string): WidgetInstance | undefined {
   for (const page of plugin.settings.pages) {
     const widget = page.widgets.find((item) => item.id === widgetId);
     if (widget) return widget;
@@ -199,7 +199,7 @@ function findWidget(plugin: HomePagesPlugin, widgetId: string): WidgetInstance |
 }
 
 /** 让后台定时器与持久化状态一致：running 就按 endsAt 排定到点回调，否则取消。 */
-export function syncPomodoroTimer(plugin: HomePagesPlugin, widgetId: string): void {
+export function syncPomodoroTimer(plugin: HomeDeckHost, widgetId: string): void {
   bindPlugin(plugin);
   const existing = timers.get(widgetId);
   if (existing !== undefined) {
@@ -218,7 +218,7 @@ export function syncPomodoroTimer(plugin: HomePagesPlugin, widgetId: string): vo
 }
 
 /** 插件加载后恢复仍在运行的计时；关着 Obsidian 时已到点的会立即结算。 */
-export function resumePomodoroTimers(plugin: HomePagesPlugin): void {
+export function resumePomodoroTimers(plugin: HomeDeckHost): void {
   for (const page of plugin.settings.pages) {
     for (const widget of page.widgets) {
       if (widget.kind === KIND) syncPomodoroTimer(plugin, widget.id);
@@ -226,7 +226,7 @@ export function resumePomodoroTimers(plugin: HomePagesPlugin): void {
   }
 }
 
-async function completePomodoro(plugin: HomePagesPlugin, widgetId: string): Promise<void> {
+async function completePomodoro(plugin: HomeDeckHost, widgetId: string): Promise<void> {
   const widget = findWidget(plugin, widgetId);
   if (!widget) return;
   const config = normalizeConfig(widget.config ?? {});
@@ -267,7 +267,7 @@ function systemNotification(title: string, body: string): void {
       notification.close();
     };
   } catch (error) {
-    console.warn("Home Pages: system notification failed", error);
+    console.warn("Home Deck: system notification failed", error);
   }
 }
 
@@ -318,10 +318,10 @@ export const pomodoroWidget: WidgetDefinition<PomodoroConfig> = {
   normalizeConfig,
 
   render(body, ctx) {
-    const { config, plugin, widget } = ctx;
+    const { config, host, widget } = ctx;
     const { session } = config;
     // 每次渲染都对齐后台定时器（设置弹窗保存、导入布局等都可能改动状态）。
-    syncPomodoroTimer(plugin, widget.id);
+    syncPomodoroTimer(host, widget.id);
 
     const today = todayIso();
     const todayCount = config.history[today] ?? 0;
@@ -414,7 +414,7 @@ export const pomodoroWidget: WidgetDefinition<PomodoroConfig> = {
       const position = session.phase === "focus" ? `第 ${Math.min(session.round + 1, config.roundsBeforeLongBreak)}/${config.roundsBeforeLongBreak} 个` : `${label} ${duration / 60_000} 分钟`;
       ctx.setSubtitle(session.state === "idle" ? `今日 ${todayCount} 🍅` : `${position}${session.state === "paused" ? " · 已暂停" : ""}`);
       // 到点由后台定时器结算；这里只在它迟到时补一脚。
-      if (session.state === "running" && left <= 0) syncPomodoroTimer(plugin, widget.id);
+      if (session.state === "running" && left <= 0) syncPomodoroTimer(host, widget.id);
     };
     update();
     if (session.state === "running") ctx.registerInterval(update, 500);
@@ -455,6 +455,6 @@ export const pomodoroWidget: WidgetDefinition<PomodoroConfig> = {
 /** 写回状态、对齐后台定时器并立刻重绘（不等待写盘的防抖）。 */
 function commit(ctx: WidgetContext<PomodoroConfig>, patch: Partial<PomodoroConfig>): void {
   void ctx.saveConfig(patch);
-  syncPomodoroTimer(ctx.plugin, ctx.widget.id);
+  syncPomodoroTimer(ctx.host, ctx.widget.id);
   ctx.rerender();
 }

@@ -113,11 +113,11 @@ function isMocFile(file: TFile): boolean {
 }
 
 type ResolvedLinksSource = { resolvedLinks?: Record<string, Record<string, number>> };
-let mocIndexCache: { files: readonly TFile[]; value: ReadonlyMap<string, string[]> } | null = null;
+let mocIndexCache: { files: readonly TFile[]; generation?: number; value: ReadonlyMap<string, string[]> } | null = null;
 
 /** MOC 反链索引：遍历 MOC 页的出链一次，避免对每篇笔记调用一次 getBacklinksForFile。 */
-export function buildMocIndex(app: App, files: readonly TFile[]): ReadonlyMap<string, string[]> {
-  if (mocIndexCache?.files === files) return mocIndexCache.value;
+export function buildMocIndex(app: App, files: readonly TFile[], generation?: number): ReadonlyMap<string, string[]> {
+  if (mocIndexCache?.files === files && mocIndexCache.generation === generation) return mocIndexCache.value;
   const resolvedLinks = (app.metadataCache as unknown as ResolvedLinksSource).resolvedLinks ?? {};
   const mutable = new Map<string, Set<string>>();
   for (const source of files) {
@@ -132,8 +132,13 @@ export function buildMocIndex(app: App, files: readonly TFile[]): ReadonlyMap<st
   }
   const value = new Map<string, string[]>();
   for (const [target, names] of mutable) value.set(target, [...names].sort(zh));
-  mocIndexCache = { files, value };
+  mocIndexCache = { files, generation, value };
   return value;
+}
+
+/** 插件卸载时释放模块级 MOC 索引。 */
+export function clearMocIndexCache(): void {
+  mocIndexCache = null;
 }
 
 /** 按配置口径算出主类与末级（末级取分类路径最后一级，与主类同级时留空）。 */
@@ -289,7 +294,7 @@ export const allNotesWidget: WidgetDefinition<AllNotesConfig> = {
     const scope = config.folder.trim().replace(/\/+$/g, "");
     const root = body.createDiv({ cls: "hp-allnotes" });
     const files = ctx.getMarkdownFiles();
-    const notes = collectNotes(app, config, files, config.showMocs ? buildMocIndex(app, files) : new Map());
+    const notes = collectNotes(app, config, files, config.showMocs ? buildMocIndex(app, files, ctx.services.vault.generation) : new Map());
     ctx.setSubtitle(`${scope || "全库"} · ${notes.length} 篇`);
 
     const search = ctx.addHeaderContent("hp-allnotes-search-wrap");
@@ -412,8 +417,8 @@ export const allNotesWidget: WidgetDefinition<AllNotesConfig> = {
         text.setPlaceholder("category").setValue(config.categoryField).onChange((value) => ctx.update({ categoryField: value.trim() }));
         text.inputEl.addClass("hp-setting-input-wide");
       });
-    const files = ctx.plugin.vaultStats.getMarkdownFiles();
-    const loadedFiles = ctx.plugin.vaultStats.getAllLoadedFiles();
+    const files = ctx.plugin.services.vault.getMarkdownFiles();
+    const loadedFiles = ctx.plugin.services.vault.getAllLoadedFiles();
     const choices = folderChoices(files, loadedFiles);
     if (config.folder && !(config.folder in choices)) choices[config.folder] = `${config.folder} · 0 篇（当前不存在）`;
     new Setting(container).setName("限定文件夹").setDesc("只索引该文件夹（含子文件夹）内的笔记；每一项后面的篇数越多排得越前。")

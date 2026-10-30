@@ -1,25 +1,49 @@
 import { ItemView, Menu, WorkspaceLeaf, setIcon } from "obsidian";
-import type HomePagesPlugin from "./main";
-import type { HomePage, WidgetInstance } from "./types";
+import type { HomeDeckHost, WidgetContext } from "./core/ports";
+import { VIEW_TYPE_HOME } from "./core/identity";
+import { isChangeRelevant } from "./core/changeScope";
+import type { HomePage, VaultChange, WidgetInstance } from "./core/types";
+import { MAX_COLUMNS, MAX_ROWS } from "./core/types";
 import { createId } from "./utils/id";
 import { openPath } from "./utils/vault";
-import { AddWidgetModal, ConfirmModal, MAX_COLUMNS, MAX_ROWS, PromptModal, WidgetSettingsModal } from "./ui/modals";
-import { PasteWidgetModal } from "./widgets/userLoader";
-import { createWidgetInstance, getWidgetDefinition, getWidgetProvider, normalizeWidgetConfig, onRegistryChange, widgetDisplayTitle } from "./widgets/registry";
+import { AddWidgetModal, ConfirmModal, PromptModal, WidgetSettingsModal } from "./ui/modals";
 import { renderEmpty } from "./ui/dom";
-import type { WidgetContext } from "./widgets/types";
 import { animateLayout, moveBefore, PointerSorter } from "./ui/sortable";
-import type { VaultChangeReason } from "./utils/vaultStats";
 
-export const VIEW_TYPE_HOME = "home-pages-view";
-const REFRESH_DEBOUNCE_MS = 900;
+export { VIEW_TYPE_HOME };
+
+const SCROLL_SELECTORS = ["[data-hp-scroll]", ".hp-media-list", ".hp-allnotes-groups"];
 
 const clampSpan = (value: number, max: number): number => Math.min(max, Math.max(1, Math.round(value)));
 
+function captureScroll(root: HTMLElement): Map<string, number> {
+  const positions = new Map<string, number>();
+  for (const selector of SCROLL_SELECTORS) {
+    root.querySelectorAll<HTMLElement>(selector).forEach((element, index) => {
+      positions.set(`${selector}#${index}`, element.scrollTop);
+    });
+  }
+  return positions;
+}
+
+function restoreScroll(root: HTMLElement, positions: Map<string, number>): void {
+  for (const selector of SCROLL_SELECTORS) {
+    root.querySelectorAll<HTMLElement>(selector).forEach((element, index) => {
+      const value = positions.get(`${selector}#${index}`);
+      if (value !== undefined) element.scrollTop = value;
+    });
+  }
+}
+
 /** 一张卡片的渲染宿主：负责组件的生命周期（定时器、清理、异步渲染的失效判断）。 */
 class WidgetHost {
-  private cleanups: Array<() => void> = [];
+  private lifecycleCleanups: Array<() => void> = [];
+  private renderCleanups: Array<() => void> = [];
   private token = 0;
+  private visible = true;
+  private dirty = false;
+  private observer: IntersectionObserver | null = null;
+  private initialized = false;
   bodyEl: HTMLElement;
 
   constructor(
@@ -33,120 +57,199 @@ class WidgetHost {
     this.bodyEl = cardEl.createDiv({ cls: "hp-card-body" });
   }
 
+  /** 只调用一次：订阅共享索引、观察可见性。 */
+  init(): void {
+    if (this.initialized) return;
+    this.initialized = true;
+    const unsubscribe = this.view.host.services.vault.subscribe((change) => this.handleVaultChange(change));
+    this.lifecycleCleanups.push(unsubscribe);
+    this.observeVisibility();
+  }
+
   async render(): Promise<void> {
+    if (!this.visible) {
+      this.dirty = true;
+      return;
+    }
     this.dispose();
+    this.dirty = false;
     this.token += 1;
     const token = this.token;
-    const body = createDiv({ cls: "hp-card-body" });
-    this.bodyEl.replaceWith(body);
-    this.bodyEl = body;
+    const body = this.bodyEl;
+    const scrollPositions = captureScroll(body);
+    body.empty();
     this.subtitleEl.setText("");
     this.actionsEl.empty();
     this.headerContentEl.empty();
 
-    const definition = getWidgetDefinition(this.widget.kind);
-    if (!definition) {
-      const provider = this.widget.provider ?? getWidgetProvider(this.widget.kind);
-      this.subtitleEl.setText("等待插件");
-      renderEmpty(body, {
-        icon: "plug",
-        text: provider
-          ? `此组件由插件「${provider}」提供，启用该插件后会自动显示。`
-          : `组件类型「${this.widget.kind}」由第三方插件提供，插件尚未加载；配置已保留。`
-      });
-      return;
-    }
-    const view = this.view;
-    const config = normalizeWidgetConfig<Record<string, unknown>>(this.widget);
-    const ctx: WidgetContext<Record<string, unknown>> = {
-      app: view.app,
-      plugin: view.plugin,
-      widget: this.widget,
-      config,
-      component: view,
-      saveConfig: async (patch) => {
-        Object.assign(config, patch);
-        this.widget.config = { ...this.widget.config, ...patch };
-        await view.plugin.saveSettings();
-      },
-      rerender: () => void this.render(),
-      openPath: (path, options) => openPath(view.app, path, options),
-      setSubtitle: (text) => {
-        if (token === this.token) this.subtitleEl.setText(text);
-      },
-      addHeaderContent: (className) => {
-        const el = createDiv({ cls: className ?? "hp-card-header-content" });
-        this.headerContentEl.appendChild(el);
-        return el;
-      },
-      addHeaderAction: (icon, label, onClick) => {
-        const button = this.actionsEl.createEl("button", { cls: "hp-card-action clickable-icon", attr: { type: "button", "aria-label": label, title: label } });
-        setIcon(button, icon);
-        button.addEventListener("click", (event) => {
-          event.stopPropagation();
-          onClick(event);
-        });
-        return button;
-      },
-      registerInterval: (callback, ms) => {
-        const id = window.setInterval(callback, ms);
-        this.cleanups.push(() => window.clearInterval(id));
-      },
-      scheduleIdle: (callback, timeoutMs = 800) => {
-        const idleWindow = window as Window & {
-          requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number;
-          cancelIdleCallback?: (id: number) => void;
-        };
-        if (idleWindow.requestIdleCallback) {
-          const id = idleWindow.requestIdleCallback(() => {
-            if (token === this.token && body.isConnected) callback();
-          }, { timeout: timeoutMs });
-          this.cleanups.push(() => idleWindow.cancelIdleCallback?.(id));
-          return;
-        }
-        const id = window.setTimeout(() => {
-          if (token === this.token && body.isConnected) callback();
-        }, 0);
-        this.cleanups.push(() => window.clearTimeout(id));
-      },
-      registerCleanup: (callback) => this.cleanups.push(callback),
-      getVaultStats: (options) => view.plugin.vaultStats.getStats(options),
-      getMarkdownFiles: () => view.plugin.vaultStats.getMarkdownFiles(),
-      getMarkdownByBasename: () => view.plugin.vaultStats.getMarkdownByBasename(),
-      getMarkdownSorted: (sortBy) => view.plugin.vaultStats.getMarkdownSorted(sortBy),
-      getFiles: () => view.plugin.vaultStats.getFiles(),
-      getAllLoadedFiles: () => view.plugin.vaultStats.getAllLoadedFiles(),
-      onVaultChange: (listener, options) => {
-        const unsubscribe = view.plugin.vaultStats.subscribe((change) => {
-          if (options?.includeMetadata === false && change.reason === "metadata") return;
-          listener(change);
-        });
-        this.cleanups.push(unsubscribe);
-        return unsubscribe;
-      },
-      isAlive: () => token === this.token && body.isConnected,
-      isEditing: () => view.isEditing()
-    };
     try {
+      const definition = this.view.host.registry.get(this.widget.kind);
+      if (!definition) {
+        const provider = this.widget.provider ?? this.view.host.registry.getProvider(this.widget.kind);
+        this.subtitleEl.setText("等待插件");
+        renderEmpty(body, {
+          icon: "plug",
+          text: provider
+            ? `此组件由插件「${provider}」提供，启用该插件后会自动显示。`
+            : `组件类型「${this.widget.kind}」由第三方插件提供，插件尚未加载；配置已保留。`
+        });
+        return;
+      }
+
+      const view = this.view;
+      const config = this.view.host.registry.normalizeConfig<Record<string, unknown>>(this.widget);
+      const ctx: WidgetContext<Record<string, unknown>> = {
+        app: view.app,
+        host: view.host,
+        widget: this.widget,
+        config,
+        services: view.host.services,
+        saveConfig: async (patch) => {
+          Object.assign(config, patch);
+          this.widget.config = { ...this.widget.config, ...patch };
+          await view.host.saveSettings();
+        },
+        rerender: () => void this.render(),
+        openPath: (path, options) => openPath(view.app, path, options),
+        setSubtitle: (text) => {
+          if (token === this.token) this.subtitleEl.setText(text);
+        },
+        addHeaderContent: (className) => {
+          const el = createDiv({ cls: className ?? "hp-card-header-content" });
+          this.headerContentEl.appendChild(el);
+          return el;
+        },
+        addHeaderAction: (icon, label, onClick) => {
+          const button = this.actionsEl.createEl("button", {
+            cls: "hp-card-action clickable-icon",
+            attr: { type: "button", "aria-label": label, title: label }
+          });
+          setIcon(button, icon);
+          button.addEventListener("click", (event) => {
+            event.stopPropagation();
+            onClick(event);
+          });
+          return button;
+        },
+        registerInterval: (callback, ms) => {
+          const id = window.setInterval(callback, ms);
+          this.renderCleanups.push(() => window.clearInterval(id));
+        },
+        scheduleIdle: (callback, timeoutMs = 800) => {
+          const idleWindow = window as Window & {
+            requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number;
+            cancelIdleCallback?: (id: number) => void;
+          };
+          if (idleWindow.requestIdleCallback) {
+            const id = idleWindow.requestIdleCallback(() => {
+              if (token === this.token && body.isConnected) callback();
+            }, { timeout: timeoutMs });
+            this.renderCleanups.push(() => idleWindow.cancelIdleCallback?.(id));
+            return;
+          }
+          const id = window.setTimeout(() => {
+            if (token === this.token && body.isConnected) callback();
+          }, 0);
+          this.renderCleanups.push(() => window.clearTimeout(id));
+        },
+        registerCleanup: (callback) => this.renderCleanups.push(callback),
+        getVaultStats: (options) => view.host.services.vault.getStats(options),
+        getMarkdownFiles: () => view.host.services.vault.getMarkdownFiles(),
+        getMarkdownByBasename: () => view.host.services.vault.getMarkdownByBasename(),
+        getMarkdownSorted: (sortBy) => view.host.services.vault.getMarkdownSorted(sortBy),
+        getFiles: () => view.host.services.vault.getFiles(),
+        getAllLoadedFiles: () => view.host.services.vault.getAllLoadedFiles(),
+        onVaultChange: (listener, options) => {
+          const unsubscribe = view.host.services.vault.subscribe((change) => {
+            if (options?.includeMetadata === false && change.reason === "metadata") return;
+            listener(change);
+          });
+          this.renderCleanups.push(unsubscribe);
+          return unsubscribe;
+        },
+        isAlive: () => token === this.token && body.isConnected,
+        isVisible: () => this.visible,
+        component: view,
+        isEditing: () => view.isEditing()
+      };
       await definition.render(body, ctx);
     } catch (error) {
-      console.error(`Home Pages: widget "${this.widget.kind}" failed to render`, error);
+      console.error(`Home Deck: widget "${this.widget.kind}" failed to render`, error);
       if (token === this.token) {
         body.empty();
         body.createDiv({ cls: "hp-empty", text: "组件渲染失败，请检查配置" });
       }
+    } finally {
+      restoreScroll(body, scrollPositions);
     }
   }
 
+  /** 清理一次渲染产生的定时器、订阅与标题栏内容。 */
   dispose(): void {
-    const cleanups = this.cleanups;
-    this.cleanups = [];
+    const cleanups = this.renderCleanups;
+    this.renderCleanups = [];
     for (const cleanup of cleanups) {
       try {
         cleanup();
       } catch (error) {
-        console.error("Home Pages: cleanup failed", error);
+        console.error("Home Deck: cleanup failed", error);
       }
+    }
+  }
+
+  /** 卡片从页面移除时调用：释放长期订阅与观察器。 */
+  destroy(): void {
+    this.dispose();
+    this.observer?.disconnect();
+    this.observer = null;
+    for (const cleanup of this.lifecycleCleanups) {
+      try {
+        cleanup();
+      } catch (error) {
+        console.error("Home Deck: lifecycle cleanup failed", error);
+      }
+    }
+    this.lifecycleCleanups = [];
+  }
+
+  private handleVaultChange(change: VaultChange): void {
+    const definition = this.view.host.registry.get(this.widget.kind);
+    if (!definition || definition.liveRefresh === false) return;
+    const allowsReason =
+      change.reason === "metadata"
+        ? definition.refreshOnMetadataChange !== false
+        : change.reason === "files"
+          ? definition.refreshOnVaultChange !== false
+          : definition.refreshOnMetadataChange !== false || definition.refreshOnVaultChange !== false;
+    if (!allowsReason) return;
+
+    if (definition.refreshScope) {
+      const config = this.view.host.registry.normalizeConfig(this.widget);
+      if (!isChangeRelevant(change, definition.refreshScope(config, this.widget))) return;
+    }
+    if (!this.visible) {
+      this.dirty = true;
+      return;
+    }
+    void this.render();
+  }
+
+  private observeVisibility(): void {
+    if (typeof IntersectionObserver === "undefined") return;
+    this.observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      this.setVisible(entry.isIntersecting);
+    }, { rootMargin: "200px 0px" });
+    this.observer.observe(this.cardEl);
+  }
+
+  private setVisible(visible: boolean): void {
+    if (this.visible === visible) return;
+    this.visible = visible;
+    if (visible && this.dirty) {
+      this.dirty = false;
+      void this.render();
     }
   }
 }
@@ -158,24 +261,22 @@ export class HomeView extends ItemView {
   private tabsEl!: HTMLElement;
   private toolbarEl!: HTMLElement;
   private gridEl!: HTMLElement;
-  private refreshTimer: number | null = null;
-  private refreshReason: VaultChangeReason | "mixed" | null = null;
   private cardSorter?: PointerSorter;
   private tabSorter?: PointerSorter;
   /** 正在拖动缩放时，取消并恢复原尺寸。 */
   private stopResize: (() => void) | null = null;
 
-  constructor(leaf: WorkspaceLeaf, readonly plugin: HomePagesPlugin) {
+  constructor(leaf: WorkspaceLeaf, readonly host: HomeDeckHost, private readonly viewType: string = VIEW_TYPE_HOME) {
     super(leaf);
     this.navigation = true;
   }
 
   getViewType(): string {
-    return VIEW_TYPE_HOME;
+    return this.viewType;
   }
 
   getDisplayText(): string {
-    return this.plugin.getActivePage().name || "首页";
+    return this.host.getActivePage().name || "首页";
   }
 
   getIcon(): string {
@@ -200,15 +301,12 @@ export class HomeView extends ItemView {
 
     this.addAction("refresh-cw", "刷新", () => this.refreshWidgets());
     this.addAction("pencil", "编辑布局", () => this.toggleEditing());
-    this.addAction("settings", "插件设置", () => this.plugin.openSettings());
+    this.addAction("settings", "插件设置", () => this.host.openSettings());
 
-    const unsubscribeVault = this.plugin.vaultStats.subscribe((change) => this.scheduleRefresh(change.reason));
-    this.register(unsubscribeVault);
+    const offRegistry = this.host.registry.onChange((kind) => this.refreshKind(kind));
+    this.register(offRegistry);
 
     this.bindSorting();
-    // 第三方插件（多维表格等）晚于首页加载时，注册后立刻把占位卡片换成真实内容。
-    const offRegistry = onRegistryChange((kind) => this.refreshKind(kind));
-    this.register(offRegistry);
     this.render();
   }
 
@@ -216,15 +314,14 @@ export class HomeView extends ItemView {
     this.stopResize?.();
     this.cardSorter?.destroy();
     this.tabSorter?.destroy();
-    if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
-    for (const host of this.hosts.values()) host.dispose();
+    for (const host of this.hosts.values()) host.destroy();
     this.hosts.clear();
   }
 
   // ---- 渲染 ----------------------------------------------------------------
 
   get page(): HomePage {
-    return this.plugin.getActivePage();
+    return this.host.getActivePage();
   }
 
   /** 全量重绘：页面标签、工具栏、网格与全部组件。 */
@@ -236,7 +333,7 @@ export class HomeView extends ItemView {
 
   /** 只更新布局相关的样式与标签栏，不重绘组件。 */
   applyLayout(): void {
-    const { rowHeight, gap, maxWidth } = this.plugin.settings;
+    const { rowHeight, gap, maxWidth } = this.host.settings;
     this.rootEl.style.setProperty("--hp-row", `${rowHeight}px`);
     this.rootEl.style.setProperty("--hp-gap", `${gap}px`);
     this.rootEl.style.setProperty("--hp-max-width", maxWidth > 0 ? `${maxWidth}px` : "none");
@@ -247,7 +344,7 @@ export class HomeView extends ItemView {
 
   private renderTabs(): void {
     this.tabSorter?.cancel();
-    const { pages, alwaysShowPageTabs } = this.plugin.settings;
+    const { pages, alwaysShowPageTabs } = this.host.settings;
     this.tabsEl.empty();
     const show = alwaysShowPageTabs || pages.length > 1 || this.editing;
     this.tabsEl.toggleClass("is-hidden", !show);
@@ -264,13 +361,16 @@ export class HomeView extends ItemView {
         this.showPageMenu(page, event);
       });
     }
-    const add = this.tabsEl.createEl("button", { cls: "hp-tab hp-tab-add", attr: { type: "button", "aria-label": "新建页面", title: "新建页面" } });
+    const add = this.tabsEl.createEl("button", {
+      cls: "hp-tab hp-tab-add",
+      attr: { type: "button", "aria-label": "新建页面", title: "新建页面" }
+    });
     setIcon(add, "plus");
     add.addEventListener("click", () => {
       new PromptModal(this.app, { title: "新建页面", placeholder: "页面名称" }, async (name) => {
-        const page: HomePage = { id: createId("page"), name, widgets: [] };
-        this.plugin.settings.pages.push(page);
-        await this.switchPage(page.id);
+        this.host.layout.addPage(name, "empty");
+        await this.host.saveSettings();
+        this.render();
       }).open();
     });
   }
@@ -281,17 +381,14 @@ export class HomeView extends ItemView {
     if (!this.editing) return;
     const hint = this.toolbarEl.createDiv({ cls: "hp-toolbar-hint" });
     setIcon(hint.createSpan({ cls: "hp-toolbar-hint-icon" }), "move");
-    hint.createSpan({ text: "拖动卡片标题或页面标签调整顺序，拖右下角手柄调整尺寸（均支持触屏）；齿轮配置内容。" });
+    hint.createSpan({
+      text: "拖动卡片标题或页面标签调整顺序，拖右下角手柄调整尺寸（均支持触屏）；齿轮配置内容。"
+    });
     const actions = this.toolbarEl.createDiv({ cls: "hp-toolbar-actions" });
     const add = actions.createEl("button", { cls: "hp-button", attr: { type: "button" } });
     setIcon(add.createSpan({ cls: "hp-button-icon" }), "plus");
     add.createSpan({ text: "添加组件" });
     add.addEventListener("click", () => this.promptAddWidget());
-
-    const paste = actions.createEl("button", { cls: "hp-button", attr: { type: "button", title: "直接粘贴代码注册并添加新组件" } });
-    setIcon(paste.createSpan({ cls: "hp-button-icon" }), "code");
-    paste.createSpan({ text: "粘贴组件" });
-    paste.addEventListener("click", () => this.promptPasteWidget());
 
     const done = actions.createEl("button", { cls: "hp-button mod-cta", attr: { type: "button" } });
     setIcon(done.createSpan({ cls: "hp-button-icon" }), "check");
@@ -302,7 +399,7 @@ export class HomeView extends ItemView {
   private renderGrid(): void {
     this.stopResize?.();
     this.cardSorter?.cancel();
-    for (const host of this.hosts.values()) host.dispose();
+    for (const host of this.hosts.values()) host.destroy();
     this.hosts.clear();
     this.gridEl.empty();
     const widgets = this.page.widgets;
@@ -321,7 +418,7 @@ export class HomeView extends ItemView {
   }
 
   private createCard(widget: WidgetInstance, before?: HTMLElement): WidgetHost {
-    const definition = getWidgetDefinition(widget.kind);
+    const definition = this.host.registry.get(widget.kind);
     const card = createDiv({ cls: `hp-card hp-card-${widget.kind}`, attr: { "data-id": widget.id } });
     if (before) this.gridEl.insertBefore(card, before);
     else this.gridEl.appendChild(card);
@@ -333,12 +430,15 @@ export class HomeView extends ItemView {
     const grip = titleWrap.createSpan({ cls: "hp-card-grip", attr: { "aria-label": "拖动排序", title: "拖动调整组件顺序" } });
     setIcon(grip, "grip-vertical");
     setIcon(titleWrap.createSpan({ cls: "hp-card-icon" }), definition?.icon ?? "plug");
-    titleWrap.createSpan({ cls: "hp-card-title-text", text: widgetDisplayTitle(widget) });
+    titleWrap.createSpan({ cls: "hp-card-title-text", text: this.host.registry.displayTitle(widget) });
     const headerContent = header.createDiv({ cls: "hp-card-header-slot" });
     const right = header.createDiv({ cls: "hp-card-header-right" });
     const subtitle = right.createSpan({ cls: "hp-card-subtitle" });
     const actions = right.createSpan({ cls: "hp-card-actions" });
-    const gear = right.createEl("button", { cls: "hp-card-gear clickable-icon", attr: { type: "button", "aria-label": "配置组件" } });
+    const gear = right.createEl("button", {
+      cls: "hp-card-gear clickable-icon",
+      attr: { type: "button", "aria-label": "配置组件" }
+    });
     setIcon(gear, "settings");
     gear.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -354,6 +454,7 @@ export class HomeView extends ItemView {
     });
     setIcon(handle, "move-diagonal-2");
     this.bindResize(handle, card, widget.id);
+    host.init();
     void host.render();
     return host;
   }
@@ -371,7 +472,10 @@ export class HomeView extends ItemView {
     card.querySelector(".hp-card-editbar")?.remove();
     const bar = card.createDiv({ cls: "hp-card-editbar" });
     const button = (icon: string, label: string, onClick: () => void, cls = ""): HTMLButtonElement => {
-      const el = bar.createEl("button", { cls: `hp-editbtn ${cls}`.trim(), attr: { type: "button", "aria-label": label, title: label } });
+      const el = bar.createEl("button", {
+        cls: `hp-editbtn ${cls}`.trim(),
+        attr: { type: "button", "aria-label": label, title: label }
+      });
       setIcon(el, icon);
       el.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -415,29 +519,13 @@ export class HomeView extends ItemView {
   }
 
   promptAddWidget(): void {
-    new AddWidgetModal(
-      this.app,
-      (kind) => this.insertWidget(kind),
-      () => this.promptPasteWidget(),
-      this.plugin,
-      new Set(this.page.widgets.map((widget) => widget.kind))
-    ).open();
-  }
-
-  promptPasteWidget(): void {
-    new PasteWidgetModal(this.app, this.plugin, (kind) => {
-      // 新脚本第一次加载时已自动放上首页，这里直接打开它的配置，不再重复添加。
-      const existing = this.page.widgets.find((item) => item.kind === kind);
-      if (existing) this.openWidgetSettings(existing.id);
-      else this.insertWidget(kind);
-    }).open();
+    new AddWidgetModal(this.app, this.host, (kind) => this.insertWidget(kind), new Set(this.page.widgets.map((widget) => widget.kind))).open();
   }
 
   private insertWidget(kind: string): void {
-    const widget = createWidgetInstance(kind);
     const page = this.page;
-    page.widgets.push(widget);
-    void this.plugin.saveSettings().then(() => {
+    const widget = this.host.layout.addWidget(kind);
+    void this.host.saveSettings().then(() => {
       if (page.widgets.length === 1) this.renderGrid();
       else this.createCard(widget);
       this.updateHeader();
@@ -448,12 +536,12 @@ export class HomeView extends ItemView {
   openWidgetSettings(id: string): void {
     const widget = this.page.widgets.find((item) => item.id === id);
     if (!widget) return;
-    new WidgetSettingsModal(this.app, this.plugin, widget, async (updated) => {
+    new WidgetSettingsModal(this.app, this.host, widget, async (updated) => {
       const page = this.page;
       const index = page.widgets.findIndex((item) => item.id === id);
       if (index < 0) return;
       page.widgets[index] = updated;
-      await this.plugin.saveSettings();
+      await this.host.saveSettings();
       this.replaceCard(updated);
     }).open();
   }
@@ -467,7 +555,7 @@ export class HomeView extends ItemView {
     }
     host.widget = widget;
     this.applyCardSize(host.cardEl, widget);
-    host.cardEl.querySelector(".hp-card-title-text")?.setText(widgetDisplayTitle(widget));
+    host.cardEl.querySelector(".hp-card-title-text")?.setText(this.host.registry.displayTitle(widget));
     this.renderEditBar(host.cardEl, widget);
     void host.render();
   }
@@ -479,33 +567,26 @@ export class HomeView extends ItemView {
   }
 
   private async setWidgetSize(id: string, w: number, h: number): Promise<void> {
-    const widget = this.page.widgets.find((item) => item.id === id);
+    const widget = this.host.layout.resizeWidget(id, w, h);
     if (!widget) return;
-    widget.w = clampSpan(w, MAX_COLUMNS);
-    widget.h = clampSpan(h, MAX_ROWS);
     const host = this.hosts.get(id);
     if (host) {
       this.animateCards(() => this.applyCardSize(host.cardEl, widget));
       this.renderEditBar(host.cardEl, widget);
     }
-    await this.plugin.saveSettings();
+    await this.host.saveSettings();
   }
 
   private async moveWidget(id: string, delta: number): Promise<void> {
-    const widgets = this.page.widgets;
-    const index = widgets.findIndex((item) => item.id === id);
-    const target = index + delta;
-    if (index < 0 || target < 0 || target >= widgets.length) return;
-    [widgets[index], widgets[target]] = [widgets[target], widgets[index]];
+    if (!this.host.layout.moveWidget(id, delta)) return;
     this.animateCards(() => this.reorderCards());
-    await this.plugin.saveSettings();
+    await this.host.saveSettings();
   }
 
   private async reorderWidget(id: string, beforeId: string | null): Promise<void> {
-    const widgets = this.page.widgets;
-    if (!moveBefore(widgets, id, beforeId)) return;
+    if (!this.host.layout.moveWidgetBefore(id, beforeId)) return;
     this.reorderCards();
-    await this.plugin.saveSettings();
+    await this.host.saveSettings();
   }
 
   /** 改布局时让其它卡片从原位置平滑滑到新位置（系统要求减少动态效果时直接跳变）。 */
@@ -522,41 +603,41 @@ export class HomeView extends ItemView {
   }
 
   private async duplicateWidget(id: string): Promise<void> {
+    const copy = this.host.layout.duplicateWidget(id);
+    if (!copy) return;
+    await this.host.saveSettings();
     const widgets = this.page.widgets;
-    const index = widgets.findIndex((item) => item.id === id);
-    if (index < 0) return;
-    const source = widgets[index];
-    const copy: WidgetInstance = { ...source, id: createId(source.kind), config: JSON.parse(JSON.stringify(source.config)) as Record<string, unknown> };
-    widgets.splice(index + 1, 0, copy);
-    await this.plugin.saveSettings();
-    const next = widgets[index + 2];
+    const index = widgets.findIndex((widget) => widget.id === copy.id);
+    const next = widgets[index + 1];
     this.createCard(copy, next ? this.hosts.get(next.id)?.cardEl : undefined);
   }
 
   private removeWidget(id: string): void {
     const widget = this.page.widgets.find((item) => item.id === id);
     if (!widget) return;
-    new ConfirmModal(this.app, { title: "删除组件", message: `确定删除“${widgetDisplayTitle(widget)}”？`, confirmText: "删除", danger: true }, async () => {
-      const page = this.page;
-      page.widgets = page.widgets.filter((item) => item.id !== id);
-      await this.plugin.saveSettings();
-      const host = this.hosts.get(id);
-      host?.dispose();
-      host?.cardEl.remove();
-      this.hosts.delete(id);
-      if (page.widgets.length === 0) this.renderGrid();
-    }).open();
+    new ConfirmModal(
+      this.app,
+      { title: "删除组件", message: `确定删除“${this.host.registry.displayTitle(widget)}”？`, confirmText: "删除", danger: true },
+      async () => {
+        this.host.layout.removeWidget(id);
+        await this.host.saveSettings();
+        const host = this.hosts.get(id);
+        host?.destroy();
+        host?.cardEl.remove();
+        this.hosts.delete(id);
+        if (this.page.widgets.length === 0) this.renderGrid();
+      }
+    ).open();
   }
 
   // ---- 页面 ----------------------------------------------------------------
 
   async switchPage(id: string): Promise<void> {
-    if (!this.plugin.settings.pages.some((page) => page.id === id)) return;
+    if (!this.host.layout.setActivePage(id)) return;
     this.stopResize?.();
     this.cardSorter?.cancel();
     this.tabSorter?.cancel();
-    this.plugin.settings.activePageId = id;
-    await this.plugin.saveSettings();
+    await this.host.saveSettings();
     this.render();
   }
 
@@ -564,86 +645,61 @@ export class HomeView extends ItemView {
     const menu = new Menu();
     menu.addItem((item) => item.setTitle("重命名").setIcon("pencil").onClick(() => {
       new PromptModal(this.app, { title: "重命名页面", value: page.name }, async (name) => {
-        page.name = name;
-        await this.plugin.saveSettings();
+        this.host.layout.renamePage(page.id, name);
+        await this.host.saveSettings();
         this.applyLayout();
       }).open();
     }));
     menu.addItem((item) => item.setTitle("向左移动").setIcon("arrow-left").onClick(() => void this.movePage(page.id, -1)));
     menu.addItem((item) => item.setTitle("向右移动").setIcon("arrow-right").onClick(() => void this.movePage(page.id, 1)));
     menu.addSeparator();
-    menu.addItem((item) => item.setTitle("删除页面").setIcon("trash-2").setDisabled(this.plugin.settings.pages.length <= 1).onClick(() => {
-      new ConfirmModal(this.app, { title: "删除页面", message: `确定删除页面“${page.name}”及其 ${page.widgets.length} 个组件？`, confirmText: "删除", danger: true }, async () => {
-        const settings = this.plugin.settings;
-        settings.pages = settings.pages.filter((item) => item.id !== page.id);
-        if (settings.activePageId === page.id) settings.activePageId = settings.pages[0].id;
-        await this.plugin.saveSettings();
-        this.render();
-      }).open();
+    menu.addItem((item) => item.setTitle("删除页面").setIcon("trash-2").setDisabled(this.host.settings.pages.length <= 1).onClick(() => {
+      new ConfirmModal(
+        this.app,
+        { title: "删除页面", message: `确定删除页面“${page.name}”及其 ${page.widgets.length} 个组件？`, confirmText: "删除", danger: true },
+        async () => {
+          this.host.layout.removePage(page.id);
+          await this.host.saveSettings();
+          this.render();
+        }
+      ).open();
     }));
     menu.showAtMouseEvent(event);
   }
 
   private async movePage(id: string, delta: number): Promise<void> {
-    const pages = this.plugin.settings.pages;
-    const index = pages.findIndex((page) => page.id === id);
-    const target = index + delta;
-    if (index < 0 || target < 0 || target >= pages.length) return;
-    [pages[index], pages[target]] = [pages[target], pages[index]];
+    if (!this.host.layout.movePage(id, delta)) return;
     this.renderTabs();
-    await this.plugin.saveSettings();
+    await this.host.saveSettings();
   }
 
   private async reorderPage(id: string, beforeId: string | null): Promise<void> {
-    if (!moveBefore(this.plugin.settings.pages, id, beforeId)) return;
+    if (!this.host.layout.movePageBefore(id, beforeId)) return;
     this.renderTabs();
-    await this.plugin.saveSettings();
+    await this.host.saveSettings();
   }
 
   // ---- 刷新 ----------------------------------------------------------------
-
-  private scheduleRefresh(reason: VaultChangeReason | "mixed" = "files"): void {
-    this.refreshReason = this.refreshReason && this.refreshReason !== reason ? "mixed" : reason;
-    if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
-    this.refreshTimer = window.setTimeout(() => {
-      this.refreshTimer = null;
-      const pendingReason = this.refreshReason ?? reason;
-      // 用户正在卡片里输入（例如新增待办）时推迟刷新，避免输入框被销毁。
-      const active = document.activeElement;
-      if (active && this.contentEl.contains(active) && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) {
-        this.scheduleRefresh(pendingReason);
-        return;
-      }
-      this.refreshReason = null;
-      this.refreshWidgets(pendingReason);
-    }, REFRESH_DEBOUNCE_MS);
-  }
 
   /** 只重绘某一类组件（含标题栏图标 / 名称）。 */
   refreshKind(kind: string): void {
     for (const host of this.hosts.values()) {
       if (host.widget.kind !== kind) continue;
-      const definition = getWidgetDefinition(kind);
+      const definition = this.host.registry.get(kind);
       const icon = host.cardEl.querySelector(".hp-card-icon");
       if (icon instanceof HTMLElement) {
         icon.empty();
         setIcon(icon, definition?.icon ?? "plug");
       }
       host.cardEl.style.setProperty("--hp-accent", definition?.accent ?? "#64748b");
-      host.cardEl.querySelector(".hp-card-title-text")?.setText(widgetDisplayTitle(host.widget));
+      host.cardEl.querySelector(".hp-card-title-text")?.setText(this.host.registry.displayTitle(host.widget));
       void host.render();
     }
   }
 
-  /** 重绘所有组件内容（不动布局）。 */
-  refreshWidgets(reason?: VaultChangeReason | "mixed"): void {
-    for (const host of this.hosts.values()) {
-      const definition = getWidgetDefinition(host.widget.kind);
-      if (reason && definition?.liveRefresh === false) continue;
-      if (reason === "metadata" && definition?.refreshOnMetadataChange === false) continue;
-      if (reason === "files" && definition?.refreshOnVaultChange === false) continue;
-      void host.render();
-    }
+  /** 显式刷新（工具栏按钮 / API）：重绘所有组件内容，不动布局。 */
+  refreshWidgets(): void {
+    for (const host of this.hosts.values()) void host.render();
   }
 
   // ---- 拖拽缩放 -------------------------------------------------------------
@@ -656,7 +712,12 @@ export class HomeView extends ItemView {
     handle.addEventListener("keydown", (event) => {
       if (!this.editing) return;
       const widget = this.page.widgets.find((item) => item.id === id);
-      const delta: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+      const delta: Record<string, [number, number]> = {
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1]
+      };
       const step = delta[event.key];
       if (!widget || !step) return;
       event.preventDefault();
@@ -673,7 +734,7 @@ export class HomeView extends ItemView {
       const grid = getComputedStyle(this.gridEl);
       const tracks = grid.gridTemplateColumns.split(" ").filter(Boolean);
       const colUnit = (parseFloat(tracks[0]) || 0) + (parseFloat(grid.columnGap) || 0);
-      const rowUnit = (parseFloat(grid.gridAutoRows) || this.plugin.settings.rowHeight) + (parseFloat(grid.rowGap) || 0);
+      const rowUnit = (parseFloat(grid.gridAutoRows) || this.host.settings.rowHeight) + (parseFloat(grid.rowGap) || 0);
       const lockWidth = tracks.length !== MAX_COLUMNS || colUnit <= 0;
       const start = { x: event.clientX, y: event.clientY, w: widget.w, h: widget.h };
       let size = { w: widget.w, h: widget.h };

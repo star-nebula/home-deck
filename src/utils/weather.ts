@@ -66,7 +66,7 @@ export async function fetchWeather(query: WeatherQuery): Promise<WeatherInfo | u
     cache.set(key, { expires: Date.now() + (data ? WEATHER_TTL : WEATHER_FAIL_TTL), data });
     return data;
   } catch (error) {
-    console.error("Home Pages: failed to fetch weather", error);
+    console.error("Home Deck: failed to fetch weather", error);
     cache.set(key, { expires: Date.now() + WEATHER_FAIL_TTL });
     return undefined;
   }

@@ -1,5 +1,5 @@
 // 把构建产物复制到本地库的插件目录：
-//   HOME_PAGES_DEV_PLUGIN_DIR="<vault>/.obsidian/plugins/home-pages" npm run deploy
+//   HOME_DECK_DEV_PLUGIN_DIR="<vault>/.obsidian/plugins/home-deck" npm run deploy
 // 目标路径也可以写在仓库根的 .dev-target 文件里（与 npm run dev 共用）。
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -15,4 +15,4 @@ for (const fileName of ["main.js", "styles.css", "manifest.json"]) {
   if (!existsSync(source)) throw new Error(`Build artifact missing: ${source}`);
   copyFileSync(source, resolve(target, fileName));
 }
-console.log(`Deployed Home Pages ${manifest.version} to ${target}`);
+console.log(`Deployed Home Deck ${manifest.version} to ${target}`);

@@ -1,5 +1,5 @@
 import { App, Keymap, Notice, TAbstractFile, TFile, TFolder, normalizePath } from "obsidian";
-import { toIsoDate } from "./date";
+import { isExcludedPath, isPathUnder } from "./paths";
 
 type InternalPluginsApp = App & {
   internalPlugins?: {
@@ -45,31 +45,11 @@ export function revealFolder(app: App, folder: TFolder): void {
 }
 
 export function isInScope(file: TFile, scope: string): boolean {
-  const normalized = scope.trim().replace(/\/+$/g, "");
-  if (!normalized || normalized === "/") return true;
-  return file.path === normalized || file.path.startsWith(`${normalized}/`);
+  return isPathUnder(file.path, scope);
 }
 
 export function isExcluded(file: TFile, excludes: string[]): boolean {
-  for (const raw of excludes) {
-    const folder = raw.trim().replace(/\/+$/g, "");
-    if (!folder) continue;
-    if (file.path === folder || file.path.startsWith(`${folder}/`)) return true;
-  }
-  return false;
-}
-
-export function getTagCount(app: App): number {
-  const cache = app.metadataCache as unknown as { getTags?: () => Record<string, number> };
-  return Object.keys(cache.getTags?.() ?? {}).length;
-}
-
-export function earliestVaultDay(app: App): string | undefined {
-  let earliest = Infinity;
-  for (const file of app.vault.getMarkdownFiles()) {
-    if (file.stat.ctime > 0 && file.stat.ctime < earliest) earliest = file.stat.ctime;
-  }
-  return Number.isFinite(earliest) ? toIsoDate(new Date(earliest)) : undefined;
+  return isExcludedPath(file.path, excludes);
 }
 
 export function stripFrontmatter(source: string): string {
@@ -85,10 +65,6 @@ export async function ensureFolder(app: App, folder: string): Promise<void> {
   } catch {
     // 已存在（并发创建）时忽略。
   }
-}
-
-export function executeCommand(app: App, id: string): boolean {
-  return (app as InternalPluginsApp).commands?.executeCommandById?.(id) ?? false;
 }
 
 export function basenameOf(path: string): string {

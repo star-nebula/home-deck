@@ -1,8 +1,9 @@
-import { App, Notice, Setting, TFile, setIcon } from "obsidian";
+import { App, Notice, Setting, setIcon } from "obsidian";
 import { formatRelativeTime } from "../utils/date";
 import { findCommandId, runCommand } from "../utils/plugins";
 import { addNumberSetting, addPathSetting, addSectionHeading, addTextareaSetting } from "../ui/settingHelpers";
 import { AnnotationsConfig, loadAnnotations } from "./annotations";
+import { fieldByName, formatValue, loadDoc, type DuoweiDoc, type DuoweiField, type DuoweiRecord } from "./duoweiCore";
 import { SECTION_META, buildDigest, type DigestSection } from "./duoweiDigest";
 import { loadWechat } from "./wechat";
 import { WidgetContext, WidgetDefinition, clampInt, normalizeWith, toStringList } from "./types";
@@ -16,10 +17,7 @@ export interface InsightsConfig extends Record<string, unknown> {
   showAnnotations: boolean;
   showWechat: boolean;
   duoweiPath: string;
-  duoweiTitleField: string;
-  duoweiStatusField: string;
   duoweiDateField: string;
-  duoweiSummaryFields: string[];
   duoweiDoneValues: string[];
   annotationPluginId: string;
   annotationCenterFolder: string;
@@ -36,10 +34,7 @@ const DEFAULTS: InsightsConfig = {
   showAnnotations: true,
   showWechat: true,
   duoweiPath: "",
-  duoweiTitleField: "",
-  duoweiStatusField: "",
   duoweiDateField: "",
-  duoweiSummaryFields: [],
   duoweiDoneValues: ["完成", "已完成", "已归档", "归档", "取消", "done", "closed", "archived", "cancelled"],
   annotationPluginId: "mobile-ink-annotation-pro",
   annotationCenterFolder: "",
@@ -49,32 +44,6 @@ const DEFAULTS: InsightsConfig = {
   limit: 12,
   showCompleted: false
 };
-
-interface DuoweiOption {
-  id: string;
-  name: string;
-}
-
-interface DuoweiField {
-  id: string;
-  name: string;
-  type: string;
-  options?: DuoweiOption[];
-}
-
-interface DuoweiRecord {
-  id: string;
-  values: Record<string, unknown>;
-  notePath?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-interface DuoweiDoc {
-  titleFieldId?: string;
-  fields: DuoweiField[];
-  records: DuoweiRecord[];
-}
 
 interface InsightItem {
   id: string;
@@ -102,33 +71,22 @@ const SOURCE_META: Record<ItemSource, { label: string; icon: string; tone: strin
 };
 
 async function loadDuowei(app: App, path: string): Promise<DuoweiDoc | null> {
-  const file = app.vault.getAbstractFileByPath(path.trim());
-  if (!(file instanceof TFile)) return null;
-  try {
-    const parsed = JSON.parse(await app.vault.cachedRead(file)) as Partial<DuoweiDoc>;
-    return Array.isArray(parsed.fields) && Array.isArray(parsed.records) ? parsed as DuoweiDoc : null;
-  } catch (error) {
-    console.error("Home Pages: failed to read insight source", path, error);
-    return null;
-  }
+  return loadDoc(app, path.trim());
 }
 
 function findField(doc: DuoweiDoc, configured: string, candidates: string[]): DuoweiField | undefined {
-  const wanted = configured.trim().toLowerCase();
-  if (wanted) return doc.fields.find((field) => field.id.toLowerCase() === wanted || field.name.toLowerCase() === wanted);
-  const names = candidates.map((value) => value.toLowerCase());
-  return doc.fields.find((field) => names.includes(field.name.toLowerCase()) || names.includes(field.id.toLowerCase()));
+  const direct = fieldByName(doc, configured);
+  if (direct) return direct;
+  for (const name of candidates) {
+    const field = fieldByName(doc, name);
+    if (field) return field;
+  }
+  return undefined;
 }
 
 function valueText(field: DuoweiField | undefined, value: unknown): string {
-  if (value === undefined || value === null || value === "") return "";
-  const one = (item: unknown): string => {
-    const option = field?.options?.find((entry) => entry.id === item || entry.name === item);
-    if (option) return option.name;
-    if (typeof item === "object") return JSON.stringify(item);
-    return String(item).replace(/^\[\[|\]\]$/g, "");
-  };
-  return (Array.isArray(value) ? value : [value]).map(one).filter(Boolean).join("、");
+  if (!field) return value === undefined || value === null ? "" : String(value);
+  return formatValue(field, value).map((chip) => chip.text).join("、");
 }
 
 function parseTime(value: unknown): number {
@@ -181,7 +139,7 @@ async function loadDigestInsights(ctx: WidgetContext<InsightsConfig>): Promise<S
 
 /** 优先读 WeChat2Ob 的同步日志（不依赖是否开启表格输出）；没有日志时回退到收件箱表格。 */
 async function loadWechatJournalInsights(ctx: WidgetContext<InsightsConfig>): Promise<SourceResult | null> {
-  const data = await loadWechat(ctx.app, { source: "auto", duoweiPluginId: "duowei-table-pro", duoweiTablePath: "", pluginId: "wechat2ob", stateFolder: "", showStats: false, showThumbs: false, days: 14, limit: 50, kinds: [], pendingOnly: false });
+  const data = await loadWechat(ctx.app, { source: "auto", duoweiPluginId: "duowei-table-pro", duoweiTablePath: "", pluginId: "wechat2ob", stateFolder: "", showStats: false, showThumbs: false, days: 14, limit: 50, kinds: [], pendingOnly: false }, ctx.services.mtime);
   if (!data.ready) return null;
   const items = data.items.map<InsightItem>((item) => ({
     id: "wechat:" + item.key,
@@ -225,7 +183,7 @@ function openAnnotationCenter(ctx: WidgetContext<InsightsConfig>): void {
 }
 
 async function loadAnnotationInsights(ctx: WidgetContext<InsightsConfig>): Promise<SourceResult> {
-  const data = await loadAnnotations(ctx.app, annotationConfig(ctx.config));
+  const data = await loadAnnotations(ctx.app, annotationConfig(ctx.config), ctx.services.mtime);
   if (!data.ready) return { ready: false, total: 0, items: [], due: 0 };
   const items = data.items.filter((item) => ctx.config.showCompleted || item.status !== "archived").map<InsightItem>((item) => ({
     id: "annotations:" + item.key,
@@ -314,11 +272,10 @@ export const insightsWidget: WidgetDefinition<InsightsConfig> = {
   icon: "inbox",
   accent: "#7c3aed",
   defaultSize: { w: 12, h: 7 },
-  defaultConfig: () => ({ ...DEFAULTS, duoweiSummaryFields: [], duoweiDoneValues: [...DEFAULTS.duoweiDoneValues] }),
+  defaultConfig: () => ({ ...DEFAULTS, duoweiDoneValues: [...DEFAULTS.duoweiDoneValues] }),
   normalizeConfig: (raw) => {
     const config = normalizeWith(DEFAULTS, raw);
     config.source = (["all", "duowei", "annotations", "wechat"] as SourceKey[]).includes(config.source) ? config.source : "all";
-    config.duoweiSummaryFields = toStringList(config.duoweiSummaryFields, 6);
     config.duoweiDoneValues = toStringList(config.duoweiDoneValues, 30);
     config.limit = clampInt(config.limit, 3, 50, DEFAULTS.limit);
     return config;
