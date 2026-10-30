@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, WorkspaceLeaf } from "obsidian";
+import { Notice, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
 import { createApi, type HomeDeckApi } from "./api";
 import { createDefaultPage } from "./core/defaults";
 import { LEGACY_ID, LEGACY_VIEW_TYPE, READY_EVENT, UPSTREAM_ID, VIEW_TYPE_HOME } from "./core/identity";
@@ -9,6 +9,7 @@ import type { HomeDeckSettings, HomePage, WidgetKind } from "./core/types";
 import { WidgetRegistry } from "./core/widgetRegistry";
 import { VaultIndex } from "./services/vaultIndex";
 import { MtimeCache } from "./services/mtimeCache";
+import { CustomWidgetLoader } from "./services/customWidgets";
 import { HomeDeckSettingTab } from "./settings";
 import { HomeView } from "./view";
 import { BUILTIN_WIDGETS } from "./widgets/builtins";
@@ -28,6 +29,7 @@ export default class HomeDeckPlugin extends Plugin implements HomeDeckHost {
   layout!: LayoutStore;
   vaultIndex!: VaultIndex;
   services!: WidgetServices;
+  customWidgets!: CustomWidgetLoader;
   api!: HomeDeckApi;
 
   get settings(): HomeDeckSettings {
@@ -51,9 +53,11 @@ export default class HomeDeckPlugin extends Plugin implements HomeDeckHost {
     this.layout = new LayoutStore(this.repo, this.registry);
     this.vaultIndex = new VaultIndex(() => this.app);
     this.services = { vault: this.vaultIndex, mtime: new MtimeCache(() => this.app) };
+    this.customWidgets = new CustomWidgetLoader(this);
     this.api = createApi(this);
 
     this.registerVaultEvents();
+    this.customWidgets.startPolling();
     // 番茄时钟：恢复上次仍在运行的计时（首页没打开也会到点提醒）。
     resumePomodoroTimers(this);
 
@@ -103,6 +107,7 @@ export default class HomeDeckPlugin extends Plugin implements HomeDeckHost {
   onunload(): void {
     void this.repo?.flush();
     this.vaultIndex?.dispose();
+    this.customWidgets?.dispose();
     disposeMediaCache();
     clearMocIndexCache();
     clearDocCache();
@@ -177,6 +182,13 @@ export default class HomeDeckPlugin extends Plugin implements HomeDeckHost {
     this.registerEvent(this.app.metadataCache.on("resolved", () => {
       this.vaultIndex.applyMetadata();
     }));
+
+    // 自定义组件脚本：可见目录走文件事件，隐藏目录由低频扫描兜底。
+    const onCustomFile = (file: TAbstractFile): void => this.customWidgets.handleFileEvent(file);
+    this.registerEvent(this.app.vault.on("create", onCustomFile));
+    this.registerEvent(this.app.vault.on("modify", onCustomFile));
+    this.registerEvent(this.app.vault.on("delete", onCustomFile));
+    this.registerEvent(this.app.vault.on("rename", (file, oldPath) => this.customWidgets.handleRename(file, oldPath)));
   }
 
   private registerLegacyViewAlias(): void {
@@ -186,6 +198,7 @@ export default class HomeDeckPlugin extends Plugin implements HomeDeckHost {
 
   private async onLayoutReady(): Promise<void> {
     this.vaultIndex.reconcile();
+    await this.customWidgets.loadAll(true);
     await this.adoptLegacyLeaves();
     if (this.settings.openOnStartup && this.getHomeLeaves().length === 0) void this.openHome();
   }

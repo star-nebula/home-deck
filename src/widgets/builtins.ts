@@ -16,7 +16,6 @@ import { quoteWidget } from "./quote";
 import { recentWidget } from "./recent";
 import { mediaWidget } from "./media";
 import { statsWidget } from "./stats";
-import { vaultHeatmapWidget } from "./vaultHeatmap";
 import { wechatWidget } from "./wechat";
 import type { WidgetDefinition } from "../core/ports";
 
@@ -40,7 +39,6 @@ export const BUILTIN_WIDGETS: AnyWidgetDefinition[] = [
   allNotesWidget,
   knowledgeMapWidget,
   statsWidget,
-  vaultHeatmapWidget,
   onThisDayWidget,
   noteWidget,
   insightsWidget

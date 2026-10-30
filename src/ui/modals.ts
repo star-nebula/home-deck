@@ -100,8 +100,7 @@ export class AddWidgetModal extends Modal {
     const grid = this.contentEl.createDiv({ cls: "hp-add-grid" });
 
     for (const definition of this.host.registry.list()) {
-      const isThirdParty = !this.host.registry.isBuiltinKind(definition.kind);
-      const card = grid.createDiv({ cls: `hp-add-card${isThirdParty ? " hp-add-card-user" : ""}` });
+      const card = grid.createDiv({ cls: "hp-add-card" });
       card.style.setProperty("--hp-accent", definition.accent);
       const added = this.existingKinds?.has(definition.kind) ?? false;
       const iconCol = card.createDiv({ cls: "hp-add-icon-col" });
@@ -110,7 +109,6 @@ export class AddWidgetModal extends Modal {
       const text = card.createDiv({ cls: "hp-add-text" });
       const nameRow = text.createDiv({ cls: "hp-add-name-row" });
       nameRow.createDiv({ cls: "hp-add-name", text: definition.name });
-      if (isThirdParty) nameRow.createSpan({ cls: "hp-add-card-custom-tag", text: "第三方" });
       text.createDiv({ cls: "hp-add-desc", text: definition.description });
 
       card.addEventListener("click", () => {

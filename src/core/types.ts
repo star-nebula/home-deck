@@ -18,8 +18,7 @@ export type BuiltinWidgetKind =
   | "insights"
   | "wechat"
   | "media"
-  | "knowledgemap"
-  | "vault-heatmap";
+  | "knowledgemap";
 
 export type WidgetKind = BuiltinWidgetKind | (string & {});
 
@@ -67,6 +66,12 @@ export interface HomeDeckSettings {
   maxWidth: number;
   /** 只有一个页面时也显示页面标签栏。 */
   alwaysShowPageTabs: boolean;
+  /** 自定义组件脚本目录（例如 .obsidian/home-pages-widgets）。 */
+  customWidgetsFolder: string;
+  /** 新写的自定义组件脚本首次加载成功时，自动放到当前首页。 */
+  autoAddCustomWidgets: boolean;
+  /** 已经处理过“首次加载”的自定义组件 kind，避免删掉卡片后改脚本又被加回来。 */
+  seenCustomWidgetKinds: string[];
 }
 
 /** 兼容旧命名；新代码优先使用 HomeDeckSettings。 */

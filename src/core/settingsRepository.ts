@@ -64,7 +64,7 @@ export class SettingsRepository {
   async load(): Promise<LegacyImportResult> {
     const raw = await this.storage.loadData();
     if (hasUsableData(raw)) {
-      this.current = migrateRawSettings(raw, this.deps).settings;
+      this.current = migrateRawSettings(await this.withLegacyLoaderSettings(raw), this.deps).settings;
       return { imported: false };
     }
 
@@ -143,6 +143,22 @@ export class SettingsRepository {
   private defaults(): HomeDeckSettings {
     const page = this.deps.createDefaultPage();
     return { ...DEFAULT_SETTINGS, pages: [page], activePageId: page.id, version: DATA_SCHEMA_VERSION };
+  }
+
+  /**
+   * v2 数据迁移时曾丢掉自定义组件字段；如果旧插件数据还在，只补回这三个字段，
+   * 避免用户升级后丢失自定义组件目录和“已加入过”的记录。
+   */
+  private async withLegacyLoaderSettings(raw: unknown): Promise<unknown> {
+    if (!isRecord(raw) || typeof raw.customWidgetsFolder === "string") return raw;
+    const legacy = await this.readLegacy();
+    if (!legacy || !isRecord(legacy.raw)) return raw;
+    return {
+      ...raw,
+      customWidgetsFolder: legacy.raw.customWidgetsFolder,
+      autoAddCustomWidgets: legacy.raw.autoAddCustomWidgets,
+      seenCustomWidgetKinds: legacy.raw.seenCustomWidgetKinds
+    };
   }
 
   private async readLegacy(): Promise<LegacyPayload | null> {

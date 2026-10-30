@@ -65,7 +65,11 @@ api.ui.renderEmpty(containerEl, { message: "No data available" });
 
 A widget definition is the same object described in `src/core/ports.ts`: `kind`, `name`, `description`, `icon`, `accent`, `defaultSize`, `defaultConfig`, `render`, `renderSettings`, and optional refresh flags / `refreshScope`.
 
-> **Custom JavaScript scripts are not supported.** The old fork could execute `.js` files from a vault folder; Home Deck intentionally removed that loader for safety and startup performance. Build a small plugin and use the Host API instead.
+### Custom widgets (unified loader)
+
+Place `.js` widget scripts in the configured folder (default `.obsidian/home-pages-widgets`). They are evaluated and registered into the same `WidgetRegistry` as built-in widgets, so they share rendering, refresh, configuration, and the Host API. Hidden folders are supported; changes are picked up by file events or a 30-second fallback scan.
+
+> **Security:** custom scripts execute arbitrary JavaScript with plugin privileges. Only load scripts you trust.
 
 ## Development
 

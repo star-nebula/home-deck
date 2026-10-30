@@ -6,6 +6,7 @@ First release as **Home Deck** (`home-deck`), an independent fork of Home Pages.
 
 ### Added
 
+- Unified custom-widget loader: built-ins and `.js` scripts in the configured folder register into the same `WidgetRegistry` and share rendering/refresh/config services.
 - Automatic one-time migration from `home-pages-star-nebula` / `home-pages` `data.json`; the old plugin's data is never modified.
 - Incremental `VaultIndex` with structural/content/metadata event handling and coalesced notifications.
 - Path-scoped, visibility-aware card refresh (`refreshScope`, `IntersectionObserver`).
@@ -24,7 +25,7 @@ First release as **Home Deck** (`home-deck`), an independent fork of Home Pages.
 
 ### Removed
 
-- Custom JavaScript widget loader (`userLoader.ts`), paste/demo modals, folder scanning, and its three settings.
+- Paste/demo modals and the old bespoke script manager; custom scripts now load from a configurable folder through the unified registry.
 - Dead exports (`getTagCount`, `earliestVaultDay`, `executeCommand`, `OpmlCategorySummary`, `loadMediaData`).
 - Duplicate date/path/plugin-JSON/duowei helpers.
 - Stale `RELEASE_NOTES*.md`, `docs/多维表格视图结合方案.md`, and `examples/vault-heatmap.js`.

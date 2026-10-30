@@ -11,7 +11,10 @@ export const DEFAULT_SETTINGS: HomeDeckSettings = {
   rowHeight: 40,
   gap: 16,
   maxWidth: 1400,
-  alwaysShowPageTabs: true
+  alwaysShowPageTabs: true,
+  customWidgetsFolder: ".obsidian/home-pages-widgets",
+  autoAddCustomWidgets: true,
+  seenCustomWidgetKinds: []
 };
 
 export interface SettingsDeps {
@@ -95,7 +98,15 @@ export function sanitizeSettings(raw: unknown, deps: SettingsDeps, source?: stri
     rowHeight: clampNumber(value.rowHeight, 24, 96) ?? DEFAULT_SETTINGS.rowHeight,
     gap: clampNumber(value.gap, 4, 40) ?? DEFAULT_SETTINGS.gap,
     maxWidth: clampNumber(value.maxWidth, 0, 4000) ?? DEFAULT_SETTINGS.maxWidth,
-    alwaysShowPageTabs: value.alwaysShowPageTabs !== false
+    alwaysShowPageTabs: value.alwaysShowPageTabs !== false,
+    customWidgetsFolder:
+      typeof value.customWidgetsFolder === "string"
+        ? value.customWidgetsFolder.trim()
+        : DEFAULT_SETTINGS.customWidgetsFolder,
+    autoAddCustomWidgets: value.autoAddCustomWidgets !== false,
+    seenCustomWidgetKinds: Array.isArray(value.seenCustomWidgetKinds)
+      ? [...new Set(value.seenCustomWidgetKinds.filter((kind): kind is string => typeof kind === "string"))]
+      : []
   };
   if (source) settings.migratedFrom = source;
   else if (typeof value.migratedFrom === "string" && value.migratedFrom.trim()) {

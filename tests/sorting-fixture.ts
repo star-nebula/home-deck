@@ -72,6 +72,15 @@ function createHost(): HomeDeckHost {
       }
     },
     register: () => undefined,
+    customWidgets: {
+      loadAll: async () => 0,
+      getLoadedWidgets: () => [],
+      dispose: () => undefined,
+      startPolling: () => undefined,
+      handleFileEvent: () => undefined,
+      handleRename: () => undefined,
+      hasKind: () => false
+    } as never,
     saveSettings: async () => {
       await new Promise((resolve) => setTimeout(resolve, 200));
       savedForSession.push(layout.getActivePage().widgets.map((item) => item.id));
@@ -106,7 +115,10 @@ async function reset(options: { editing?: boolean; widths?: number[]; count?: nu
     maxWidth: 1400,
     alwaysShowPageTabs: true,
     openOnStartup: false,
-    openInNewTab: true
+    openInNewTab: true,
+    customWidgetsFolder: "",
+    autoAddCustomWidgets: false,
+    seenCustomWidgetKinds: []
   };
   const contentEl = document.body.appendChild(createElement("div"));
   contentEl.style.height = "550px";

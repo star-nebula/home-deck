@@ -65,7 +65,11 @@ api.ui.renderEmpty(containerEl, { message: "暂无数据" });
 
 组件定义与 `src/core/ports.ts` 中的 `WidgetDefinition` 一致：`kind`、`name`、`description`、`icon`、`accent`、`defaultSize`、`defaultConfig`、`render`、`renderSettings`，以及可选的刷新策略 / `refreshScope`。
 
-> **不再支持自定义 JavaScript 脚本。** 旧分支允许从库内目录执行 `.js` 文件；Home Deck 为了安全和启动性能移除了该加载器。请改用小型插件 + Host API。
+### 自定义组件（统一加载器）
+
+把 `.js` 组件脚本放进设置里的组件目录（默认 `.obsidian/home-pages-widgets`）。脚本会被执行并注册到与内置组件相同的 `WidgetRegistry`，共用渲染、刷新、配置和 Host API。支持隐藏目录；改动由文件事件或 30 秒兜底扫描拾取。
+
+> **安全提示：** 自定义脚本以插件权限执行任意 JavaScript，请只加载可信文件。
 
 ## 开发
 

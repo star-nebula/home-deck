@@ -4,6 +4,7 @@ import type { PathScope } from "./changeScope";
 import type { WidgetRegistry } from "./widgetRegistry";
 import type { LayoutStore } from "./layoutStore";
 import type { SettingsRepository } from "./settingsRepository";
+import type { CustomWidgetLoader } from "../services/customWidgets";
 
 /** 组件可用的共享数据服务。 */
 export interface VaultDataService {
@@ -125,6 +126,7 @@ export interface HomeDeckHost {
   readonly layout: LayoutStore;
   readonly repo: SettingsRepository;
   readonly services: WidgetServices;
+  readonly customWidgets: CustomWidgetLoader;
   register(cleanup: () => void): void;
   saveSettings(): Promise<void>;
   refreshViews(options?: { layoutOnly?: boolean; kind?: string }): void;

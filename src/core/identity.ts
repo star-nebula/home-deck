@@ -14,4 +14,4 @@ export const UPSTREAM_ID = "home-pages";
 export const LEGACY_IDS = [LEGACY_ID, UPSTREAM_ID] as const;
 
 /** 当前设置 schema 版本。 */
-export const DATA_SCHEMA_VERSION = 2;
+export const DATA_SCHEMA_VERSION = 3;

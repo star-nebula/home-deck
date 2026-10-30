@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { migrateRawSettings, sanitizeSettings, type SettingsDeps } from "../src/core/migrations";
 import { SettingsRepository, type PluginStorage } from "../src/core/settingsRepository";
 import { isChangeRelevant } from "../src/core/changeScope";
+import { WidgetRegistry } from "../src/core/widgetRegistry";
+import { BUILTIN_WIDGETS } from "../src/widgets/builtins";
+import { evaluateWidgetScript } from "../src/services/customWidgets";
 import type { HomeDeckSettings, VaultChange } from "../src/core/types";
 
 const KINDS = [
@@ -48,7 +52,7 @@ function testMigration(): void {
   const raw = legacyPayload();
   const result = migrateRawSettings(raw, deps, "home-pages-star-nebula");
   assert.equal(result.migrated, true);
-  assert.equal(result.settings.version, 2);
+  assert.equal(result.settings.version, 3);
   assert.equal(result.settings.migratedFrom, "home-pages-star-nebula");
   assert.equal(result.settings.pages.length, 1);
   assert.equal(result.settings.pages[0].widgets.length, KINDS.length + 1);
@@ -60,21 +64,22 @@ function testMigration(): void {
   assert.deepEqual(unknown.config, { ref: "a#b" });
   assert.equal(result.settings.rowHeight, 44);
   assert.equal(result.settings.alwaysShowPageTabs, false);
-  assert.equal("customWidgetsFolder" in result.settings, false);
-  assert.equal("autoAddCustomWidgets" in result.settings, false);
-  assert.equal("seenCustomWidgetKinds" in result.settings, false);
+  assert.equal(result.settings.customWidgetsFolder, ".scripts/home-pages");
+  assert.equal(result.settings.autoAddCustomWidgets, true);
+  assert.deepEqual(result.settings.seenCustomWidgetKinds, ["a", "b"]);
 
   // 幂等：再次迁移 v2 数据不改变结构。
   const again = migrateRawSettings(result.settings, deps);
   assert.equal(again.migrated, false);
   assert.deepEqual(again.settings.pages, result.settings.pages);
   assert.equal(again.settings.migratedFrom, "home-pages-star-nebula");
-  console.log("PASS migration keeps all kinds, config, provider and drops loader fields");
+  console.log("PASS migration keeps all kinds, config, provider and custom-widget fields");
 
   const fresh = sanitizeSettings({}, deps);
   assert.equal(fresh.pages.length, 1);
   assert.equal(fresh.pages[0].id, "default-page");
-  assert.equal(fresh.version, 2);
+  assert.equal(fresh.version, 3);
+  assert.equal(fresh.customWidgetsFolder, ".obsidian/home-pages-widgets");
   console.log("PASS empty payload falls back to one default page");
 }
 
@@ -139,7 +144,7 @@ async function testRepositoryMigration(): Promise<void> {
   assert.equal(files.get(legacyPath), legacyText, "legacy file must stay byte-identical");
   assert.ok(files.has(`${newDir}/data.pre-migration.json`), "backup should be written");
   const persisted = saved as HomeDeckSettings;
-  assert.equal(persisted.version, 2);
+  assert.equal(persisted.version, 3);
   assert.equal(persisted.migratedFrom, legacyId);
   assert.equal(persisted.pages[0].widgets.length, KINDS.length + 1);
   console.log("PASS repository migrates legacy data, writes backup, leaves old file intact");
@@ -157,7 +162,40 @@ async function testRepositoryMigration(): Promise<void> {
   console.log("PASS new data wins and legacy is not re-read");
 }
 
+async function testCustomWidgetRegistration(): Promise<void> {
+  const script = `
+    module.exports = {
+      kind: "custom-demo",
+      name: "自定义示例",
+      description: "test",
+      defaultSize: { w: 4, h: 3 },
+      defaultConfig() { return { text: "hi" }; },
+      render(body, ctx) { body.setText(ctx.config.text); },
+      renderSettings() {}
+    };
+  `;
+  const definition = await evaluateWidgetScript(script, {} as never, "demo.js");
+  assert.equal(definition.kind, "custom-demo");
+  assert.equal(definition.defaultSize.w, 4);
+  const registry = new WidgetRegistry(BUILTIN_WIDGETS);
+  const unregister = registry.register(definition, "user-script:demo.js");
+  assert.equal(registry.get("custom-demo")?.name, "自定义示例");
+  assert.equal(registry.normalizeConfig<{ text: string }>(registry.createInstance("custom-demo")).text, "hi");
+  unregister();
+  assert.equal(registry.get("custom-demo"), undefined);
+  console.log("PASS custom widget registers through the same registry as built-ins");
+
+  const realScript = process.env.HOME_DECK_TEST_CUSTOM_SCRIPT;
+  if (realScript) {
+    const source = await readFile(realScript, "utf8");
+    const realDefinition = await evaluateWidgetScript(source, {} as never, realScript);
+    assert.equal(realDefinition.kind, "vault-heatmap");
+    console.log(`PASS real custom script evaluates: ${realScript}`);
+  }
+}
+
 testMigration();
 testChangeScope();
 await testRepositoryMigration();
+await testCustomWidgetRegistration();
 console.log("ALL CORE TESTS PASSED");

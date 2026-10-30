@@ -11,6 +11,7 @@ import {
 import type { HomeDeckSettings, HomePage, WidgetInstance } from "./core/types";
 import { createId } from "./utils/id";
 import { ConfirmModal, MAX_COLUMNS, MAX_ROWS, PromptModal } from "./ui/modals";
+import { addPathSetting } from "./ui/settingHelpers";
 
 export const SETTINGS_VERSION = DATA_SCHEMA_VERSION;
 export { DEFAULT_SETTINGS };
@@ -148,6 +149,67 @@ export class HomeDeckSettingTab extends PluginSettingTab {
           this.display();
         }).open();
       }));
+
+    new Setting(containerEl).setName("自定义组件").setHeading();
+    containerEl.createEl("p", {
+      cls: "setting-item-description",
+      text: "自定义 JS 组件与内置组件注册到同一个加载器，共用渲染、刷新和配置服务。脚本会执行任意 JavaScript，请只加载可信文件。"
+    });
+    addPathSetting(containerEl, this.app, {
+      name: "组件目录",
+      desc: "放置 .js 组件脚本的库内目录；隐藏目录也支持。保存后自动重新扫描。",
+      placeholder: ".obsidian/home-pages-widgets",
+      value: settings.customWidgetsFolder,
+      suggest: { folders: true, files: false },
+      onChange: (value) => {
+        settings.customWidgetsFolder = value.trim();
+      },
+      onCommit: (value) => {
+        settings.customWidgetsFolder = value.trim();
+        void (async () => {
+          await this.host.saveSettings();
+          const count = await this.host.customWidgets.loadAll();
+          new Notice(`Home Deck: 已加载 ${count} 个组件`);
+          this.display();
+        })();
+      }
+    });
+    new Setting(containerEl).setName("新组件自动加入首页")
+      .setDesc("脚本第一次加载成功时，如果首页还没有同类型卡片，就自动放一张到当前页。")
+      .addToggle((toggle) => toggle.setValue(settings.autoAddCustomWidgets).onChange(async (value) => {
+        settings.autoAddCustomWidgets = value;
+        await this.host.saveSettings();
+      }));
+    new Setting(containerEl)
+      .setName("重新扫描")
+      .setDesc("立即重新读取组件目录，应用脚本改动。")
+      .addButton((button) => button.setButtonText("重新扫描加载").onClick(async () => {
+        const count = await this.host.customWidgets.loadAll();
+        new Notice(`Home Deck: 已加载 ${count} 个组件`);
+        this.display();
+      }));
+
+    const loadedWidgets = this.host.customWidgets.getLoadedWidgets();
+    new Setting(containerEl).setName("已加载的自定义组件").setHeading();
+    if (loadedWidgets.length === 0) {
+      new Setting(containerEl)
+        .setName("暂无已加载的自定义组件")
+        .setDesc("把 .js 组件脚本放进上面的目录，或点击“重新扫描加载”。");
+    } else {
+      for (const widget of loadedWidgets) {
+        new Setting(containerEl)
+          .setName(widget.name)
+          .setDesc(`${widget.description ? `${widget.description} — ` : ""}标识: ${widget.kind} | 文件: ${widget.filePath}`)
+          .addButton((button) => button.setButtonText("复制路径").onClick(async () => {
+            try {
+              await navigator.clipboard.writeText(widget.filePath);
+              new Notice("组件路径已复制");
+            } catch {
+              new Notice(widget.filePath);
+            }
+          }));
+      }
+    }
 
     new Setting(containerEl).setName("备份与迁移").setHeading();
     new Setting(containerEl).setName("导出布局").setDesc("把所有页面与组件配置复制为 JSON。")
