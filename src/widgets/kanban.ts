@@ -47,6 +47,7 @@ export const kanbanWidget: WidgetDefinition<KanbanConfig> = {
   icon: "columns-3",
   accent: "#2563eb",
   defaultSize: { w: 6, h: 7 },
+  liveRefresh: false,
   defaultConfig: () => ({ ...DEFAULTS }),
   normalizeConfig: (raw) => {
     const config = normalizeWith(DEFAULTS, raw);
@@ -58,7 +59,18 @@ export const kanbanWidget: WidgetDefinition<KanbanConfig> = {
 
   async render(body, ctx) {
     const { app, config } = ctx;
-    const { records, label } = await loadTasks(app, config);
+    const sourceSetting = config.source.trim().replace(/\/+$/g, "");
+    const sourceTarget = sourceSetting ? app.vault.getAbstractFileByPath(normalizePath(sourceSetting)) : null;
+    ctx.onVaultChange((change) => {
+      const relevant = change.paths.some((path) => {
+        if (!path.toLowerCase().endsWith(".md")) return false;
+        if (!sourceSetting) return true;
+        if (path === sourceSetting) return true;
+        return path.startsWith(`${sourceSetting}/`) || (sourceTarget instanceof TFolder && path.startsWith(`${sourceTarget.path}/`));
+      });
+      if (relevant) ctx.scheduleIdle(() => ctx.rerender(), 700);
+    });
+    const { records, label } = await loadTasks(app, config, ctx.getMarkdownFiles());
     if (!ctx.isAlive()) return;
     ctx.setSubtitle(label);
     const sourceFile = config.source.trim() ? app.vault.getAbstractFileByPath(normalizePath(config.source.trim())) : null;
@@ -112,19 +124,23 @@ export const kanbanWidget: WidgetDefinition<KanbanConfig> = {
 
 // ---- 数据 ----------------------------------------------------------------
 
-function resolveFiles(app: App, source: string): { files: TFile[]; label: string } {
+function resolveFiles(app: App, source: string, markdownFiles: readonly TFile[]): { files: readonly TFile[]; label: string } {
   const path = source.trim().replace(/\/+$/g, "");
-  if (!path) return { files: app.vault.getMarkdownFiles(), label: "全库" };
+  if (!path) return { files: markdownFiles, label: "全库" };
   const target = app.vault.getAbstractFileByPath(normalizePath(path));
   if (target instanceof TFile) return { files: [target], label: target.basename };
   if (target instanceof TFolder) {
-    return { files: app.vault.getMarkdownFiles().filter((file) => file.path.startsWith(`${target.path}/`)), label: `${target.path}/` };
+    return { files: markdownFiles.filter((file) => file.path.startsWith(`${target.path}/`)), label: `${target.path}/` };
   }
   return { files: [], label: `${path}（尚未创建）` };
 }
 
-async function loadTasks(app: App, config: KanbanConfig): Promise<{ records: TaskRecord[]; label: string }> {
-  const { files, label } = resolveFiles(app, config.source);
+async function loadTasks(
+  app: App,
+  config: KanbanConfig,
+  markdownFiles: readonly TFile[]
+): Promise<{ records: TaskRecord[]; label: string }> {
+  const { files, label } = resolveFiles(app, config.source, markdownFiles);
   const records: TaskRecord[] = [];
   const sorted = [...files].sort((a, b) => b.stat.mtime - a.stat.mtime);
   for (const file of sorted) {

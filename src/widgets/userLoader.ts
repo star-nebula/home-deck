@@ -4,6 +4,9 @@ import type HomePagesPlugin from "../main";
 import { createWidgetInstance, getWidgetDefinition, isWidgetKind } from "./registry";
 import type { WidgetDefinition } from "./types";
 
+/** Hidden folders do not emit reliable vault events, so keep a low-frequency fallback scan. */
+export const HIDDEN_WIDGET_SCAN_INTERVAL_MS = 30_000;
+
 export const DEMO_WIDGET_TEMPLATE = `// 这是一个 Home Pages 自定义组件示例：极简动态时钟与问候语
 module.exports = {
   // 1. 组件唯一标识（建议小写字母与中划线，不能与内置组件重复）
@@ -179,7 +182,9 @@ export async function evaluateWidgetScript(
       typeof raw.renderSettings === "function"
         ? (raw.renderSettings as WidgetDefinition["renderSettings"])
         : () => undefined,
-    liveRefresh: raw.liveRefresh !== false
+    liveRefresh: raw.liveRefresh !== false,
+    refreshOnVaultChange: raw.refreshOnVaultChange !== false,
+    refreshOnMetadataChange: raw.refreshOnMetadataChange !== false
   };
 
   return validated;
@@ -568,10 +573,11 @@ export class CustomWidgetManager {
     const { vault } = this.plugin.app;
 
     this.plugin.registerInterval(window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
       if (this.isHiddenFolder()) void this.loadHidden(true, true).catch((err: unknown) => {
         console.error("Home Pages: 隐藏组件目录扫描失败", err);
       });
-    }, 2000));
+    }, HIDDEN_WIDGET_SCAN_INTERVAL_MS));
 
     this.plugin.registerEvent(
       vault.on("modify", async (file) => {

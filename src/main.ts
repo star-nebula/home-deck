@@ -1,4 +1,4 @@
-import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
+import { Notice, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import { DEFAULT_SETTINGS, HomePagesSettingTab, createDefaultPage, sanitizeSettings } from "./settings";
 import { createWidgetInstance } from "./widgets/registry";
 import { resumePomodoroTimers } from "./widgets/pomodoro";
@@ -6,6 +6,7 @@ import { createApi, type HomePagesApi } from "./api";
 import type { HomePage, HomePagesSettings, WidgetKind } from "./types";
 import { HomeView, VIEW_TYPE_HOME } from "./view";
 import { CustomWidgetManager, DeleteCustomWidgetSuggestModal, PasteWidgetModal } from "./widgets/userLoader";
+import { VaultStatsService } from "./utils/vaultStats";
 
 type SettingApp = { setting?: { open: () => void; openTabById: (id: string) => void } };
 
@@ -15,12 +16,15 @@ export default class HomePagesPlugin extends Plugin {
   api: HomePagesApi = createApi(this);
   /** 自定义脚本组件管理器：负责扫描指定目录、热重载与示例生成。 */
   readonly customWidgetManager = new CustomWidgetManager(this);
+  /** 全插件共享的 vault 文件与统计快照。 */
+  readonly vaultStats = new VaultStatsService(() => this.app);
   private saveTimer: number | null = null;
   private pendingSave: Promise<void> | null = null;
   private resolveSave: (() => void) | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
+    this.registerVaultStatsEvents();
     // 番茄时钟：恢复上次仍在运行的计时（首页没打开也会到点提醒）。
     resumePomodoroTimers(this);
 
@@ -93,6 +97,7 @@ export default class HomePagesPlugin extends Plugin {
 
   onunload(): void {
     this.customWidgetManager.unloadAll();
+    this.vaultStats.dispose();
     if (this.saveTimer !== null) {
       window.clearTimeout(this.saveTimer);
       this.saveTimer = null;
@@ -101,6 +106,35 @@ export default class HomePagesPlugin extends Plugin {
       this.resolveSave = null;
       void this.saveData(this.settings).finally(() => resolve?.());
     }
+  }
+
+  private registerVaultStatsEvents(): void {
+    this.registerEvent(this.app.vault.on("modify", (file) => {
+      if (!(file instanceof TFile)) return;
+      const extension = file.extension.toLowerCase();
+      if (extension === "md") this.vaultStats.invalidate("files", true, { operation: "modify", path: file.path });
+      else if (["base", "canvas", "duowei", "json"].includes(extension)) {
+        this.vaultStats.invalidate("files", false, { operation: "modify", path: file.path });
+      }
+    }));
+    this.registerEvent(this.app.vault.on("create", (file) => {
+      this.vaultStats.invalidate("files", true, { operation: "create", path: file.path });
+    }));
+    this.registerEvent(this.app.vault.on("delete", (file) => {
+      this.vaultStats.invalidate("files", true, { operation: "delete", path: file.path });
+    }));
+    this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+      this.vaultStats.invalidate("files", true, { operation: "rename", path: file.path, oldPath });
+    }));
+    this.registerEvent(this.app.metadataCache.on("changed", (file) => {
+      this.vaultStats.invalidate("metadata", true, { operation: "metadata", path: file.path });
+    }));
+    this.registerEvent(this.app.metadataCache.on("resolve", (file) => {
+      this.vaultStats.invalidate("metadata", true, { operation: "resolve", path: file.path });
+    }));
+    this.registerEvent(this.app.metadataCache.on("resolved", () => {
+      this.vaultStats.invalidate("metadata", true, { operation: "metadata" });
+    }));
   }
 
   // ---- 设置 ----------------------------------------------------------------

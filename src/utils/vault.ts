@@ -120,13 +120,18 @@ export function dailyNoteBasename(app: App, isoDate: string): string {
   return parsed.isValid() ? parsed.format(format) : isoDate;
 }
 
-export function findDailyNote(app: App, isoDate: string): TFile | null {
+export function findDailyNote(
+  app: App,
+  isoDate: string,
+  markdownByBasename?: ReadonlyMap<string, TFile>
+): TFile | null {
   const { folder } = getDailyNoteSettings(app);
   const basename = dailyNoteBasename(app, isoDate);
   const expected = normalizePath(folder ? `${folder}/${basename}.md` : `${basename}.md`);
   const direct = app.vault.getAbstractFileByPath(expected);
   if (direct instanceof TFile) return direct;
   // 兜底：全库找同名笔记（用户把日记挪过文件夹的情况）。
+  if (markdownByBasename) return markdownByBasename.get(basename) ?? markdownByBasename.get(isoDate) ?? null;
   for (const file of app.vault.getMarkdownFiles()) {
     if (file.basename === basename || file.basename === isoDate) return file;
   }

@@ -50,7 +50,16 @@ async function reset(options: { editing?: boolean; widths?: number[]; count?: nu
   const plugin = {
     settings, getActivePage: () => pages.find((page) => page.id === settings.activePageId)!,
     saveSettings: async () => { await new Promise((resolve) => setTimeout(resolve, 200)); savedForSession.push(plugin.getActivePage().widgets.map((item) => item.id)); },
-    openSettings: () => undefined
+    openSettings: () => undefined,
+    vaultStats: {
+      subscribe: () => () => undefined,
+      getStats: () => ({}),
+      getMarkdownFiles: () => [],
+      getMarkdownByBasename: () => new Map(),
+      getMarkdownSorted: () => [],
+      getFiles: () => [],
+      getAllLoadedFiles: () => []
+    }
   };
   view = new HomeView({ app, contentEl, updateHeader: () => undefined } as unknown as WorkspaceLeaf, plugin as unknown as HomePagesPlugin);
   await view.onOpen();

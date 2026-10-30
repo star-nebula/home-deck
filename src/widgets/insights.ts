@@ -162,7 +162,7 @@ async function loadDigestInsights(ctx: WidgetContext<InsightsConfig>): Promise<S
     sectionLimit: Math.max(3, Math.ceil(config.limit / 2)),
     sections: ["overdue", "today", "upcoming", "active", "recent"],
     doneValues: config.showCompleted ? [] : config.duoweiDoneValues
-  });
+  }, ctx.getFiles());
   if (digest.scanned === 0) return { ready: false, total: 0, items: [] };
   const items = digest.items.map<InsightItem>((item) => ({
     id: "duowei:" + item.tablePath + ":" + item.title,

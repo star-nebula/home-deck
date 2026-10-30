@@ -7,9 +7,16 @@ import { loadWechat } from "../src/widgets/wechat";
 import { TFile, TFolder } from "obsidian";
 import { createWidgetInstance, getWidgetDefinition, listWidgetDefinitions, onRegistryChange, registerWidget } from "../src/widgets/registry";
 import { sanitizeSettings, sanitizeWidget } from "../src/settings";
-import { CustomWidgetManager, DEMO_WIDGET_TEMPLATE, evaluateWidgetScript } from "../src/widgets/userLoader";
+import {
+  CustomWidgetManager,
+  DEMO_WIDGET_TEMPLATE,
+  HIDDEN_WIDGET_SCAN_INTERVAL_MS,
+  evaluateWidgetScript
+} from "../src/widgets/userLoader";
+import { buildMocIndex } from "../src/widgets/allnotes";
 import { habitStreak } from "../src/widgets/habit";
 import { advanceSession, bumpHistory, formatClock, pauseSession, pomodoroWidget, remainingMs, resetSession, startSession, type PomodoroConfig } from "../src/widgets/pomodoro";
+import { VaultStatsService } from "../src/utils/vaultStats";
 
 import { cmaIcon, normalizeHost, parseCoords, qweatherIcon, rankCmaCandidates, splitQuery, stripSuffix } from "../src/utils/weather";
 import { parseOpml, exportOpml } from "../src/utils/opml";
@@ -344,6 +351,240 @@ function testRegistry(): void {
   unregister();
   check("unregister removes definition and notifies", getWidgetDefinition("third-party-demo") === undefined && events.join(",") === "third-party-demo:true,third-party-demo:false", events);
   off();
+}
+
+async function testSharedVaultStats(): Promise<void> {
+  const today = new Date(2026, 9, 30, 12, 0, 0);
+  const todayTimestamp = today.getTime();
+  const recent = new TFile();
+  recent.path = "Daily/today.md";
+  recent.extension = "md";
+  recent.basename = "2026-10-30";
+  recent.stat = { ctime: todayTimestamp, mtime: todayTimestamp, size: 3_000 };
+  const archived = new TFile();
+  archived.path = "Archive/old.md";
+  archived.extension = "md";
+  archived.basename = "old";
+  archived.stat = { ctime: new Date(2020, 0, 1).getTime(), mtime: new Date(2020, 0, 1).getTime(), size: 600 };
+  const attachment = new TFile();
+  attachment.path = "Daily/image.png";
+  attachment.extension = "png";
+  attachment.stat = { ctime: todayTimestamp, mtime: todayTimestamp, size: 20_000 };
+  const folders = [new TFolder(), new TFolder()];
+  folders[0].path = "Daily";
+  folders[1].path = "Archive";
+
+  let getFilesCalls = 0;
+  let getLoadedCalls = 0;
+  const app = {
+    vault: {
+      getFiles: () => {
+        getFilesCalls += 1;
+        return [recent, archived, attachment];
+      },
+      getAllLoadedFiles: () => {
+        getLoadedCalls += 1;
+        return [...folders];
+      }
+    },
+    metadataCache: {
+      getTags: () => ({ "#daily": 2, "#archive": 1 })
+    }
+  };
+  const stats = new VaultStatsService(() => app as never, {
+    now: () => todayTimestamp,
+    notifyDebounceMs: 5,
+    notifyMaxWaitMs: 20
+  });
+  const first = stats.getStats();
+  const second = stats.getStats();
+  check("vault stats reuse one filesystem snapshot across consumers", first === second && getFilesCalls === 1 && getLoadedCalls === 1, [
+    first === second,
+    getFilesCalls,
+    getLoadedCalls
+  ]);
+  check(
+    "vault stats count notes, folders, age and activity",
+    first.noteCount === 2 &&
+      first.folderCount === 2 &&
+      first.tagCount === 2 &&
+      first.earliestDay === "2020-01-01" &&
+      first.activityByDay["2026-10-30"] === 1,
+    first
+  );
+  const filtered = stats.getStats({ excludeFolders: ["Archive"] });
+  check(
+    "filtered stats share the same base snapshot",
+    filtered.noteCount === 1 &&
+      filtered.attachmentCount === 1 &&
+      filtered.todayNotes === 1 &&
+      getFilesCalls === 1,
+    filtered
+  );
+  check(
+    "cached markdown arrays and basename index are reused",
+    stats.getMarkdownFiles() === stats.getMarkdownFiles() && stats.getMarkdownByBasename().get("2026-10-30") === recent
+  );
+
+  let notifications = 0;
+  let lastReason = "";
+  let lastPaths: readonly string[] = [];
+  let lastOperations: readonly string[] = [];
+  const unsubscribe = stats.subscribe((change) => {
+    notifications += 1;
+    lastReason = change.reason;
+    lastPaths = change.paths;
+    lastOperations = change.operations;
+  });
+  stats.invalidate("files", true, { operation: "create", path: "Knowledge/new.md" });
+  stats.invalidate("files", true, { operation: "delete", path: "Knowledge/old.md" });
+  stats.invalidate("metadata", true, { operation: "resolve", path: "Knowledge/_mocs/MOC.md" });
+  await new Promise((resolve) => setTimeout(resolve, 35));
+  check(
+    "vault change bursts merge one notification with scoped paths",
+    notifications === 1 &&
+      lastReason === "mixed" &&
+      lastPaths.join(",") === "Knowledge/new.md,Knowledge/old.md,Knowledge/_mocs/MOC.md" &&
+      lastOperations.join(",") === "create,delete,resolve",
+    [notifications, lastReason, lastPaths, lastOperations]
+  );
+  stats.getStats();
+  check("invalidated stats rebuild lazily on the next read", getFilesCalls === 2 && getLoadedCalls === 2, [getFilesCalls, getLoadedCalls]);
+  unsubscribe();
+  stats.dispose();
+}
+
+async function testPerformanceGuards(): Promise<void> {
+  const heatmapSource = await fs.readFile("examples/vault-heatmap.js", "utf8");
+  const heatmap = await evaluateWidgetScript(heatmapSource, {} as never, "examples/vault-heatmap.js");
+  const defaults = heatmap.defaultConfig();
+  check("heatmap defaults to event-driven refresh", heatmap.liveRefresh === false && defaults.autoRefreshMinutes === 0, [
+    heatmap.liveRefresh,
+    defaults.autoRefreshMinutes
+  ]);
+  check(
+    "heatmap uses shared stats and coalesced vault events",
+    heatmapSource.includes("ctx.getVaultStats") && heatmapSource.includes("ctx.onVaultChange")
+  );
+  check(
+    "heatmap migrates the legacy five-minute default without changing custom intervals",
+    heatmapSource.includes("configVersion < 2") && heatmapSource.includes("configuredRefresh === 5")
+  );
+  check("stats and hero defer their own vault refresh", getWidgetDefinition("stats")?.liveRefresh === false && getWidgetDefinition("hero")?.liveRefresh === false);
+  check(
+    "vault-wide list widgets own scoped refresh",
+    getWidgetDefinition("allnotes")?.liveRefresh === false &&
+      getWidgetDefinition("recent")?.liveRefresh === false &&
+      getWidgetDefinition("diary")?.liveRefresh === false &&
+      getWidgetDefinition("kanban")?.liveRefresh === false
+  );
+  check("hidden custom-widget fallback scan is at least 30 seconds", HIDDEN_WIDGET_SCAN_INTERVAL_MS >= 30_000, HIDDEN_WIDGET_SCAN_INTERVAL_MS);
+
+  const moc = new TFile();
+  moc.path = "Knowledge/_mocs/项目 MOC.md";
+  moc.basename = "项目 MOC";
+  const note = new TFile();
+  note.path = "Knowledge/项目/计划.md";
+  note.basename = "计划";
+  let backlinkCalls = 0;
+  const mocApp = {
+    metadataCache: {
+      resolvedLinks: { [moc.path]: { [note.path]: 1 } },
+      getBacklinksForFile: () => {
+        backlinkCalls += 1;
+        return null;
+      }
+    }
+  };
+  const mocIndex = buildMocIndex(mocApp as never, [moc, note]);
+  check(
+    "MOC index avoids one backlink lookup per note",
+    backlinkCalls === 0 && mocIndex.get(note.path)?.[0] === "项目 MOC",
+    { backlinkCalls, mocs: mocIndex.get(note.path) }
+  );
+}
+
+function legacyDashboardScan(files: TFile[], loadedFiles: TFolder[], now: number): number {
+  const markdown = files.filter((file) => file.extension === "md");
+  const filteredMarkdown = markdown.filter((file) => !file.path.startsWith("Archive/"));
+  const filteredFiles = files.filter((file) => !file.path.startsWith("Archive/"));
+  const words = Math.round(filteredMarkdown.reduce((sum, file) => sum + file.stat.size, 0) / 3);
+  const attachments = filteredFiles.length - filteredMarkdown.length;
+  const folders = loadedFiles.filter((file) => file.path !== "/").length;
+  const heroNotes = files.filter((file) => file.extension === "md").length;
+  let earliest = Infinity;
+  for (const file of markdown) if (file.stat.ctime > 0 && file.stat.ctime < earliest) earliest = file.stat.ctime;
+  const daySet = new Map<string, Set<string>>();
+  for (const file of markdown) {
+    const date = new Date(file.stat.mtime);
+    const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+    let set = daySet.get(key);
+    if (!set) daySet.set(key, (set = new Set()));
+    set.add(file.path);
+  }
+  let total = 0;
+  for (const set of daySet.values()) total += set.size;
+  return filteredMarkdown.length + filteredFiles.length + words + attachments + folders + heroNotes + (earliest < now ? 1 : 0) + total;
+}
+
+function testVaultStatsScaleBudget(): void {
+  const now = new Date(2026, 9, 30, 12).getTime();
+  const files: TFile[] = [];
+  for (let index = 0; index < 33_806; index += 1) {
+    const file = new TFile();
+    file.path = index % 3 === 0 ? `Daily/${index}.md` : index % 7 === 0 ? `Archive/${index}.md` : `Assets/${index}.png`;
+    file.extension = file.path.endsWith(".md") ? "md" : "png";
+    const stamp = now - (index % 3_650) * 86_400_000;
+    file.stat = { ctime: stamp, mtime: stamp, size: index % 3 === 0 ? 3_000 : 20_000 };
+    files.push(file);
+  }
+  const folders = Array.from({ length: 500 }, (_, index) => {
+    const folder = new TFolder();
+    folder.path = `Folder-${index}`;
+    return folder;
+  });
+  const median = (values: number[]): number => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+  const legacySamples = Array.from({ length: 7 }, () => {
+    const started = performance.now();
+    legacyDashboardScan(files, folders, now);
+    return performance.now() - started;
+  });
+  const legacyMs = median(legacySamples);
+
+  let getFilesCalls = 0;
+  const app = {
+    vault: {
+      getFiles: () => {
+        getFilesCalls += 1;
+        return files;
+      },
+      getAllLoadedFiles: () => folders
+    },
+    metadataCache: { getTags: () => ({ "#tag": 1 }) }
+  };
+  const coldSamples = Array.from({ length: 7 }, () => {
+    const coldStats = new VaultStatsService(() => app as never, { now: () => now });
+    const started = performance.now();
+    coldStats.getStats();
+    const elapsed = performance.now() - started;
+    coldStats.dispose();
+    return elapsed;
+  });
+  const coldMs = median(coldSamples);
+  const stats = new VaultStatsService(() => app as never, { now: () => now });
+  getFilesCalls = 0;
+  stats.getStats();
+  const warmStart = performance.now();
+  for (let index = 0; index < 10_000; index += 1) stats.getStats();
+  const warmAverageMs = (performance.now() - warmStart) / 10_000;
+  stats.dispose();
+
+  console.log(`PERF synthetic 33806 files: legacy dashboard scan ${legacyMs.toFixed(2)}ms; shared cold ${coldMs.toFixed(2)}ms; cached read ${warmAverageMs.toFixed(4)}ms`);
+  check(
+    "33,806-file stats stay inside the regression budget",
+    coldMs < 2_000 && warmAverageMs < 0.05 && getFilesCalls === 1,
+    { legacyMs, coldMs, warmAverageMs, getFilesCalls }
+  );
 }
 
 async function testUserCustomWidgets(): Promise<void> {
@@ -835,6 +1076,9 @@ async function testMediaCachingAndProgress(): Promise<void> {
 }
 
 testRegistry();
+await testSharedVaultStats();
+await testPerformanceGuards();
+testVaultStatsScaleBudget();
 await testUserCustomWidgets();
 testHabitStreak();
 testPomodoro();

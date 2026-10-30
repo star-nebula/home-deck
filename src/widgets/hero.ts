@@ -1,6 +1,5 @@
 import { Setting, TFile, setIcon } from "obsidian";
 import { clockLabel, dateLabel, daysBetweenToday, greetingForHour, greetingIcon, isIsoDate } from "../utils/date";
-import { earliestVaultDay, getTagCount } from "../utils/vault";
 import { WeatherQuery, WeatherSource, fetchWeather, isWeatherSource, searchWeatherLocations } from "../utils/weather";
 import { addDateSetting, addPathSetting, addSectionHeading } from "../ui/settingHelpers";
 import { WidgetDefinition, WidgetSettingsContext, normalizeWith } from "./types";
@@ -59,6 +58,7 @@ export const heroWidget: WidgetDefinition<HeroConfig> = {
   icon: "sunrise",
   accent: "#7c3aed",
   defaultSize: { w: 12, h: 4 },
+  liveRefresh: false,
   defaultConfig: () => ({ ...DEFAULTS }),
   normalizeConfig: (raw) => {
     const config = normalizeWith(DEFAULTS, raw);
@@ -93,10 +93,12 @@ export const heroWidget: WidgetDefinition<HeroConfig> = {
         line.createSpan({ cls: "hp-hero-name", text: config.name.trim() });
       }
     }
+    let noteLabel: HTMLSpanElement | null = null;
+    let tagLabel: HTMLSpanElement | null = null;
     if (config.showMeta) {
       const meta = left.createDiv({ cls: "hp-hero-meta" });
-      addMeta(meta, "file-text", `${app.vault.getMarkdownFiles().length.toLocaleString()} 篇笔记`);
-      addMeta(meta, "tag", `${getTagCount(app).toLocaleString()} 标签`);
+      noteLabel = addMeta(meta, "file-text", "… 篇笔记");
+      tagLabel = addMeta(meta, "tag", "… 标签");
     }
 
     const wantWeather = config.showWeather && config.city.trim().length > 0;
@@ -132,12 +134,9 @@ export const heroWidget: WidgetDefinition<HeroConfig> = {
     }
 
     const chips = body.createDiv({ cls: "hp-hero-chips" });
+    let ageLabel: HTMLSpanElement | null = null;
     if (config.showVaultAge) {
-      const since = isIsoDate(config.since) ? config.since : earliestVaultDay(app);
-      if (since) {
-        const days = Math.max(0, -daysBetweenToday(since));
-        addChip(chips, "sprout", `已耕耘知识花园 ${days.toLocaleString()} 天`, `起算日 ${since}`);
-      }
+      ageLabel = addChip(chips, "sprout", "已耕耘知识花园 … 天");
     }
     if (config.showCountdown && isIsoDate(config.target)) {
       const raw = daysBetweenToday(config.target);
@@ -152,6 +151,26 @@ export const heroWidget: WidgetDefinition<HeroConfig> = {
       addChip(chips, "flag", text, config.target);
     }
     if (chips.childElementCount === 0) chips.remove();
+
+    if (noteLabel || tagLabel || ageLabel) {
+      const paintVaultStats = (): void => {
+        const stats = ctx.getVaultStats();
+        noteLabel?.setText(`${stats.noteCount.toLocaleString()} 篇笔记`);
+        tagLabel?.setText(`${stats.tagCount.toLocaleString()} 标签`);
+        if (ageLabel) {
+          const since = isIsoDate(config.since) ? config.since : stats.earliestDay;
+          if (since) {
+            const days = Math.max(0, -daysBetweenToday(since));
+            ageLabel.setText(`已耕耘知识花园 ${days.toLocaleString()} 天`);
+            ageLabel.parentElement?.setAttribute("title", `起算日 ${since}`);
+          } else {
+            ageLabel.parentElement?.remove();
+          }
+        }
+      };
+      ctx.scheduleIdle(paintVaultStats, 1_000);
+      ctx.onVaultChange(() => ctx.scheduleIdle(paintVaultStats, 1_000));
+    }
   },
 
   renderSettings(container, ctx) {
@@ -305,15 +324,15 @@ function renderCitySetting(container: HTMLElement, ctx: WidgetSettingsContext<He
   }
 }
 
-function addMeta(parent: HTMLElement, icon: string, text: string): void {
+function addMeta(parent: HTMLElement, icon: string, text: string): HTMLSpanElement {
   const item = parent.createSpan({ cls: "hp-hero-meta-item" });
   setIcon(item.createSpan({ cls: "hp-hero-meta-icon" }), icon);
-  item.createSpan({ text });
+  return item.createSpan({ text });
 }
 
-function addChip(parent: HTMLElement, icon: string, text: string, title?: string): void {
+function addChip(parent: HTMLElement, icon: string, text: string, title?: string): HTMLSpanElement {
   const chip = parent.createDiv({ cls: "hp-hero-chip" });
   if (title) chip.setAttribute("title", title);
   setIcon(chip.createSpan({ cls: "hp-hero-chip-icon" }), icon);
-  chip.createSpan({ text });
+  return chip.createSpan({ text });
 }

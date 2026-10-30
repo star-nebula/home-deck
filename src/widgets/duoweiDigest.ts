@@ -134,14 +134,18 @@ function isDone(doc: DuoweiDoc, record: DuoweiRecord, status: { text: string } |
   return false;
 }
 
-export async function buildDigest(app: App, options: DigestOptions): Promise<DigestResult> {
+export async function buildDigest(
+  app: App,
+  options: DigestOptions,
+  allFiles: readonly TFile[] = app.vault.getFiles()
+): Promise<DigestResult> {
   const today = todayIso();
   const upcomingEnd = shiftKey(Math.max(0, options.upcomingDays));
   const overdueStart = shiftKey(-Math.max(0, options.overdueDays));
   const recentSince = Date.now() - Math.max(0, options.recentDays) * 86400000;
   const wanted = new Set(options.sections);
   const doneValues = new Set((options.doneValues ?? []).map((value) => value.trim().toLowerCase()).filter(Boolean));
-  const files = app.vault.getFiles().filter((file) =>
+  const files = allFiles.filter((file) =>
     file.extension.toLowerCase() === "duowei"
     && !isBackupTable(file)
     && isInScope(file, options.folder)

@@ -1,4 +1,4 @@
-import { App, normalizePath, Setting, WorkspaceLeaf } from "obsidian";
+import { App, normalizePath, Setting, TFile, WorkspaceLeaf } from "obsidian";
 import { addPathSetting, addTextareaSetting } from "../ui/settingHelpers";
 import { normalizeWith, toStringList, type WidgetDefinition } from "./types";
 
@@ -120,8 +120,8 @@ function resolveScope(config: KnowledgeMapConfig): ResolvedScope {
   return { mode: config.scopeMode, paths, allVault: false, emptyCustom: false };
 }
 
-function scopeFiles(app: App, scope: ResolvedScope, excludes: string[]): string[] {
-  return app.vault.getMarkdownFiles()
+function scopeFiles(files: readonly TFile[], scope: ResolvedScope, excludes: string[]): string[] {
+  return files
     .map((file) => file.path)
     .filter((path) => (scope.allVault || scope.paths.some((folder) => isWithinPath(path, folder))) && !isExcluded(path, excludes));
 }
@@ -146,11 +146,11 @@ function areaLabel(path: string): string {
   return path.split("/").pop() ?? path;
 }
 
-function knowledgeAreas(app: App, config: KnowledgeMapConfig): KnowledgeArea[] {
+function knowledgeAreas(app: App, config: KnowledgeMapConfig, files: readonly TFile[]): KnowledgeArea[] {
   const scope = resolveScope(config);
   const excludes = config.excludeFolders;
-  const files = scopeFiles(app, scope, excludes);
-  const areas: KnowledgeArea[] = [{ label: "总计", path: "", count: files.length }];
+  const scopedFiles = scopeFiles(files, scope, excludes);
+  const areas: KnowledgeArea[] = [{ label: "总计", path: "", count: scopedFiles.length }];
   const fixed = scope.mode === "knowledge-creation"
     ? [...KNOWLEDGE_AREAS, ...CREATION_AREAS]
     : scope.mode === "knowledge"
@@ -159,13 +159,13 @@ function knowledgeAreas(app: App, config: KnowledgeMapConfig): KnowledgeArea[] {
 
   if (fixed.length > 0) {
     for (const area of fixed) {
-      areas.push({ ...area, count: countWithin(files, area.path) });
+      areas.push({ ...area, count: countWithin(scopedFiles, area.path) });
     }
     return areas;
   }
 
   const counts = new Map<string, number>();
-  for (const path of files) {
+  for (const path of scopedFiles) {
     const areaPath = dynamicAreaPath(path, scope);
     if (areaPath) counts.set(areaPath, (counts.get(areaPath) ?? 0) + 1);
   }
@@ -329,7 +329,7 @@ export const knowledgeMapWidget: WidgetDefinition<KnowledgeMapConfig> = {
   render(body, ctx) {
     const { app, config } = ctx;
     const scope = resolveScope(config);
-    const initialAreas = knowledgeAreas(app, config);
+    const initialAreas = knowledgeAreas(app, config, ctx.getMarkdownFiles());
     let activePath = initialAreas.some((area) => area.path && area.path === config.area) ? config.area : "";
     let graphHandle: GraphHandle | null = null;
     let appliedQuery = graphQuery(scope, config.excludeFolders, activePath);
@@ -349,7 +349,7 @@ export const knowledgeMapWidget: WidgetDefinition<KnowledgeMapConfig> = {
     };
 
     const paintStats = (): void => {
-      const areas = knowledgeAreas(app, config);
+      const areas = knowledgeAreas(app, config, ctx.getMarkdownFiles());
       if (activePath && !areas.some((area) => area.path === activePath)) applyFilter("");
       setSubtitle(areas);
       if (!statsHost) return;
@@ -386,14 +386,16 @@ export const knowledgeMapWidget: WidgetDefinition<KnowledgeMapConfig> = {
         if (ctx.isAlive()) paintStats();
       }, 300);
     };
-    const refs = [
-      app.vault.on("create", scheduleStats),
-      app.vault.on("delete", scheduleStats),
-      app.vault.on("rename", scheduleStats)
-    ];
+    ctx.onVaultChange((change) => {
+      const structural = change.operations.some((operation) => operation === "create" || operation === "delete" || operation === "rename");
+      if (!structural) return;
+      const relevant = change.paths.some((path) =>
+        (scope.allVault || scope.paths.some((folder) => isWithinPath(path, folder))) && !isExcluded(path, config.excludeFolders)
+      );
+      if (relevant) scheduleStats();
+    });
     ctx.registerCleanup(() => {
       if (statsTimer) window.clearTimeout(statsTimer);
-      for (const ref of refs) app.vault.offref(ref);
     });
 
     const groups = config.colorize ? colorGroupsForAreas(initialAreas) : [];
@@ -458,7 +460,7 @@ export const knowledgeMapWidget: WidgetDefinition<KnowledgeMapConfig> = {
       onChange: (value) => ctx.update({ excludeFolders: normalizeFolders(toStringList(value)) })
     });
 
-    const areas = knowledgeAreas(app, config);
+    const areas = knowledgeAreas(app, config, ctx.plugin.vaultStats.getMarkdownFiles());
     const areaOptions: Record<string, string> = { "": "范围汇总" };
     for (const area of areas) {
       if (!area.path) continue;

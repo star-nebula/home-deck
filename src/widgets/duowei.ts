@@ -134,7 +134,7 @@ async function renderDigest(body: HTMLElement, ctx: WidgetContext<DuoweiConfig>)
     recentDays: config.recentDays,
     sectionLimit: config.sectionLimit,
     sections: config.sections
-  });
+  }, ctx.getFiles());
   if (!ctx.isAlive()) return;
   ctx.setSubtitle(`${result.tables} 张表格 · ${result.items.length} 条`);
   if (result.scanned === 0) {

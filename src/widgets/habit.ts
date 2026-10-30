@@ -53,7 +53,7 @@ export const habitWidget: WidgetDefinition<HabitConfig> = {
     const { config } = ctx;
     const today = todayIso();
     const days = buildRecentDays(RANGE_DAYS[config.range]);
-    const doneByDate = await loadCheckins(ctx.app, config, days);
+    const doneByDate = await loadCheckins(ctx.app, config, days, ctx.getMarkdownByBasename());
     if (!ctx.isAlive()) return;
     ctx.setSubtitle(`${config.storage === "daily" ? "Daily Note" : "本地记录"} · ${RANGE_LABEL[config.range]}`);
 
@@ -142,7 +142,12 @@ export function habitStreak(isDone: (iso: string) => boolean, today: string, lim
   return streak;
 }
 
-async function loadCheckins(app: App, config: HabitConfig, days: string[]): Promise<Map<string, Set<string>>> {
+async function loadCheckins(
+  app: App,
+  config: HabitConfig,
+  days: string[],
+  markdownByBasename: ReadonlyMap<string, TFile>
+): Promise<Map<string, Set<string>>> {
   const habitSet = new Set(config.habits);
   const result = new Map<string, Set<string>>();
   if (config.storage === "plugin") {
@@ -152,7 +157,7 @@ async function loadCheckins(app: App, config: HabitConfig, days: string[]): Prom
     return result;
   }
   await mapWithConcurrency(days, 6, async (date) => {
-    const file = findDailyNote(app, date);
+    const file = findDailyNote(app, date, markdownByBasename);
     const done = file ? await readDoneFromDaily(app, file, config.heading) : [];
     result.set(date, new Set(done.filter((name) => habitSet.has(name))));
   });

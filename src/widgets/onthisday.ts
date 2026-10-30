@@ -50,7 +50,7 @@ export const onThisDayWidget: WidgetDefinition<OnThisDayConfig> = {
     const thisYear = now.getFullYear();
     ctx.setSubtitle(`${now.getMonth() + 1}月${now.getDate()}日`);
 
-    const items = app.vault.getMarkdownFiles()
+    const items = ctx.getMarkdownFiles()
       .filter((file) => isInScope(file, config.folder) && !isExcluded(file, config.excludeFolders))
       .map((file) => {
         const fm: Record<string, unknown> = app.metadataCache.getFileCache(file)?.frontmatter ?? {};

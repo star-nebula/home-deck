@@ -1,6 +1,5 @@
 import { Setting } from "obsidian";
 import { daysBetweenToday, isIsoDate } from "../utils/date";
-import { earliestVaultDay, getTagCount, isExcluded } from "../utils/vault";
 import { addDateSetting, addTextareaSetting } from "../ui/settingHelpers";
 import { WidgetDefinition, normalizeWith, toStringList } from "./types";
 
@@ -33,6 +32,7 @@ export const statsWidget: WidgetDefinition<StatsConfig> = {
   icon: "pie-chart",
   accent: "#d97706",
   defaultSize: { w: 5, h: 4 },
+  liveRefresh: false,
   defaultConfig: () => ({ ...DEFAULTS, tiles: [...DEFAULTS.tiles], excludeFolders: [] }),
   normalizeConfig: (raw) => {
     const config = normalizeWith(DEFAULTS, raw);
@@ -45,41 +45,35 @@ export const statsWidget: WidgetDefinition<StatsConfig> = {
   },
 
   render(body, ctx) {
-    const { app, config } = ctx;
+    const { config } = ctx;
     ctx.setSubtitle("知识库概览");
-    const markdown = app.vault.getMarkdownFiles().filter((file) => !isExcluded(file, config.excludeFolders));
-    const all = app.vault.getFiles().filter((file) => !isExcluded(file, config.excludeFolders));
-    const values: Record<StatTile, () => string> = {
-      notes: () => markdown.length.toLocaleString(),
-      tags: () => getTagCount(app).toLocaleString(),
-      // 字数估算：Markdown 总字节 ÷ 3（中文 UTF-8 约 3 字节/字），避免逐篇读取。
-      words: () => {
-        const words = Math.round(markdown.reduce((sum, file) => sum + file.stat.size, 0) / 3);
-        return words >= 10000 ? `${Math.round(words / 1000)}k` : words.toLocaleString();
-      },
-      attachments: () => Math.max(0, all.length - markdown.length).toLocaleString(),
-      folders: () => app.vault.getAllLoadedFiles().filter((file) => !("extension" in file) && file.path !== "/").length.toLocaleString(),
-      vaultAge: () => {
-        const since = isIsoDate(config.since) ? config.since : earliestVaultDay(app);
-        return since ? Math.max(0, -daysBetweenToday(since)).toLocaleString() : "—";
-      },
-      todayNotes: () => {
-        const start = new Date();
-        start.setHours(0, 0, 0, 0);
-        return markdown.filter((file) => file.stat.ctime >= start.getTime()).length.toLocaleString();
-      },
-      weekNotes: () => {
-        const since = Date.now() - 7 * 86400000;
-        return markdown.filter((file) => file.stat.mtime >= since).length.toLocaleString();
-      }
-    };
     const grid = body.createDiv({ cls: "hp-stats" });
     grid.style.setProperty("--hp-cols", String(config.columns));
+    const valueEls = new Map<StatTile, HTMLElement>();
     config.tiles.forEach((tile, index) => {
       const item = grid.createDiv({ cls: `hp-stat hp-tone-${index % 4}` });
-      item.createDiv({ cls: "hp-stat-value", text: values[tile]() });
+      valueEls.set(tile, item.createDiv({ cls: "hp-stat-value", text: "…" }));
       item.createDiv({ cls: "hp-stat-label", text: ALL_TILES.find((entry) => entry.id === tile)?.label ?? tile });
     });
+
+    const paint = (): void => {
+      const stats = ctx.getVaultStats({ excludeFolders: config.excludeFolders });
+      const since = isIsoDate(config.since) ? config.since : stats.earliestDay;
+      const values: Record<StatTile, string> = {
+        notes: stats.noteCount.toLocaleString(),
+        tags: stats.tagCount.toLocaleString(),
+        words: stats.wordEstimate >= 10000 ? `${Math.round(stats.wordEstimate / 1000)}k` : stats.wordEstimate.toLocaleString(),
+        attachments: stats.attachmentCount.toLocaleString(),
+        folders: stats.folderCount.toLocaleString(),
+        vaultAge: since ? Math.max(0, -daysBetweenToday(since)).toLocaleString() : "—",
+        todayNotes: stats.todayNotes.toLocaleString(),
+        weekNotes: stats.weekNotes.toLocaleString()
+      };
+      for (const [tile, el] of valueEls) el.setText(values[tile]);
+    };
+
+    ctx.scheduleIdle(paint, 1_000);
+    ctx.onVaultChange(() => ctx.scheduleIdle(paint, 1_000));
   },
 
   renderSettings(container, ctx) {

@@ -1,4 +1,4 @@
-import { Setting, setIcon, TFolder } from "obsidian";
+import { Setting, setIcon, TFile, TFolder } from "obsidian";
 import { formatRelativeTime } from "../utils/date";
 import { isExcluded, isInScope } from "../utils/vault";
 import { addNumberSetting, addPathSetting, addTextareaSetting } from "../ui/settingHelpers";
@@ -30,6 +30,8 @@ export const recentWidget: WidgetDefinition<RecentConfig> = {
   icon: "history",
   accent: "#2563eb",
   defaultSize: { w: 4, h: 6 },
+  liveRefresh: false,
+  refreshOnMetadataChange: false,
   defaultConfig: () => ({ ...DEFAULTS, excludeFolders: [] }),
   normalizeConfig: (raw) => {
     const config = normalizeWith(DEFAULTS, raw);
@@ -42,12 +44,24 @@ export const recentWidget: WidgetDefinition<RecentConfig> = {
   },
 
   render(body, ctx) {
-    const { app, config } = ctx;
-    const all = app.vault.getMarkdownFiles();
-    const files = all
-      .filter((file) => isInScope(file, config.folder) && !isExcluded(file, config.excludeFolders))
-      .sort((a, b) => (config.sortBy === "ctime" ? b.stat.ctime - a.stat.ctime : b.stat.mtime - a.stat.mtime))
-      .slice(0, config.limit);
+    const { config } = ctx;
+    ctx.onVaultChange((change) => {
+      if (change.reason === "metadata") return;
+      const relevant = change.paths.some((path) => {
+        if (!path.toLowerCase().endsWith(".md")) return false;
+        if (!config.folder.trim()) return true;
+        const folder = config.folder.trim().replace(/\/+$/g, "");
+        return path === folder || path.startsWith(`${folder}/`);
+      });
+      if (relevant) ctx.scheduleIdle(() => ctx.rerender(), 500);
+    });
+    const all = ctx.getMarkdownFiles();
+    const files: TFile[] = [];
+    for (const file of ctx.getMarkdownSorted(config.sortBy)) {
+      if (!isInScope(file, config.folder) || isExcluded(file, config.excludeFolders)) continue;
+      files.push(file);
+      if (files.length >= config.limit) break;
+    }
     ctx.setSubtitle(config.folder.trim() ? `${config.folder.trim()} · ${files.length} 篇` : `全库 · ${all.length} 篇`);
 
     const list = body.createDiv({ cls: "hp-list" });

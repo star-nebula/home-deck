@@ -1,4 +1,4 @@
-import { App, Setting, TFile, TFolder, setIcon } from "obsidian";
+import { App, Setting, TAbstractFile, TFile, TFolder, setIcon } from "obsidian";
 import { addNumberSetting } from "../ui/settingHelpers";
 import { isExcluded, isInScope } from "../utils/vault";
 import { WidgetDefinition, clampInt, normalizeWith, toStringList } from "./types";
@@ -112,29 +112,28 @@ function isMocFile(file: TFile): boolean {
   return MOC_HINT.test(file.basename) || dir.split("/").some((segment: string) => MOC_HINT.test(segment));
 }
 
-type BacklinkSource = { getBacklinksForFile?: (file: TFile) => unknown };
-type BacklinkMap = { forEach: (callback: (value: unknown, key: string) => void) => void };
+type ResolvedLinksSource = { resolvedLinks?: Record<string, Record<string, number>> };
+let mocIndexCache: { files: readonly TFile[]; value: ReadonlyMap<string, string[]> } | null = null;
 
-/** 所属 MOC：从指向本篇的反链里挑出文件名像 MOC 页的那些。 */
-function collectMocs(app: App, file: TFile): string[] {
-  const cache = app.metadataCache as unknown as BacklinkSource;
-  if (typeof cache.getBacklinksForFile !== "function") return [];
-  const out: string[] = [];
-  try {
-    const backlinks = cache.getBacklinksForFile(file);
-    if (!backlinks || typeof (backlinks as BacklinkMap).forEach !== "function") return [];
-    (backlinks as BacklinkMap).forEach((_links, source) => {
-      if (source === file.path) return;
-      const name = (source.split("/").pop() ?? "").replace(/\.md$/, "");
-      if (!MOC_HINT.test(name) || name === file.basename) return;
-      if (!out.includes(name)) out.push(name);
-    });
-  } catch {
-    // metadataCache 尚未就绪：本次先缺着，下次扫描补全。
-    return [];
+/** MOC 反链索引：遍历 MOC 页的出链一次，避免对每篇笔记调用一次 getBacklinksForFile。 */
+export function buildMocIndex(app: App, files: readonly TFile[]): ReadonlyMap<string, string[]> {
+  if (mocIndexCache?.files === files) return mocIndexCache.value;
+  const resolvedLinks = (app.metadataCache as unknown as ResolvedLinksSource).resolvedLinks ?? {};
+  const mutable = new Map<string, Set<string>>();
+  for (const source of files) {
+    if (!MOC_HINT.test(source.basename)) continue;
+    const targets = resolvedLinks[source.path] ?? {};
+    for (const target of Object.keys(targets)) {
+      if (target === source.path) continue;
+      let names = mutable.get(target);
+      if (!names) mutable.set(target, (names = new Set()));
+      names.add(source.basename);
+    }
   }
-  out.sort(zh);
-  return out;
+  const value = new Map<string, string[]>();
+  for (const [target, names] of mutable) value.set(target, [...names].sort(zh));
+  mocIndexCache = { files, value };
+  return value;
 }
 
 /** 按配置口径算出主类与末级（末级取分类路径最后一级，与主类同级时留空）。 */
@@ -156,10 +155,15 @@ function classify(app: App, file: TFile, config: AllNotesConfig, scope: string, 
   return { area: isMocFile(file) ? MOC_AREA : UNCLASSIFIED, sub: "" };
 }
 
-function collectNotes(app: App, config: AllNotesConfig): NoteEntry[] {
+function collectNotes(
+  app: App,
+  config: AllNotesConfig,
+  files: readonly TFile[],
+  mocsByPath: ReadonlyMap<string, string[]>
+): NoteEntry[] {
   const scope = config.folder.trim().replace(/\/+$/g, "");
   const notes: NoteEntry[] = [];
-  for (const file of app.vault.getMarkdownFiles()) {
+  for (const file of files) {
     if (!isInScope(file, scope) || isExcluded(file, config.excludeFolders)) continue;
     const frontmatter = (app.metadataCache.getFileCache(file)?.frontmatter ?? {}) as Record<string, unknown>;
     const { area, sub } = classify(app, file, config, scope, frontmatter);
@@ -171,7 +175,7 @@ function collectNotes(app: App, config: AllNotesConfig): NoteEntry[] {
       abstract: joinedValue(frontmatter.abstract),
       area,
       sub: area === UNCLASSIFIED || area === ROOT_AREA ? "" : sub,
-      mocs: config.showMocs ? collectMocs(app, file) : [],
+      mocs: config.showMocs ? mocsByPath.get(file.path) ?? [] : [],
       isMoc: isMocFile(file)
     });
   }
@@ -186,12 +190,20 @@ interface FolderChoice {
 }
 
 /** 库内每个文件夹及其（含子文件夹）笔记数，笔记多的排前面；限定/排除两处下拉共用。 */
-function listFolders(app: App): FolderChoice[] {
-  const files = app.vault.getMarkdownFiles();
+function listFolders(files: readonly TFile[], loadedFiles: readonly TAbstractFile[]): FolderChoice[] {
   const folders: FolderChoice[] = [];
-  for (const item of app.vault.getAllLoadedFiles()) {
+  const counts = new Map<string, number>();
+  for (const file of files) {
+    let folder = file.parent?.path ?? file.path.replace(/\/[^/]+$/, "");
+    while (folder && folder !== "/") {
+      counts.set(folder, (counts.get(folder) ?? 0) + 1);
+      const slash = folder.lastIndexOf("/");
+      folder = slash > 0 ? folder.slice(0, slash) : "";
+    }
+  }
+  for (const item of loadedFiles) {
     if (!(item instanceof TFolder) || item.path === "/") continue;
-    const count = files.reduce((sum, file) => sum + (isInScope(file, item.path) ? 1 : 0), 0);
+    const count = counts.get(item.path) ?? 0;
     folders.push({ path: item.path, count, label: `${item.path} · ${count} 篇` });
   }
   folders.sort((a, b) => b.count - a.count || zh(a.path, b.path));
@@ -199,9 +211,9 @@ function listFolders(app: App): FolderChoice[] {
 }
 
 /** 限定文件夹下拉：首项是全库。 */
-function folderChoices(app: App): Record<string, string> {
-  const choices: Record<string, string> = { "": `（全库）· ${app.vault.getMarkdownFiles().length} 篇` };
-  for (const entry of listFolders(app)) choices[entry.path] = entry.label;
+function folderChoices(files: readonly TFile[], loadedFiles: readonly TAbstractFile[]): Record<string, string> {
+  const choices: Record<string, string> = { "": `（全库）· ${files.length} 篇` };
+  for (const entry of listFolders(files, loadedFiles)) choices[entry.path] = entry.label;
   return choices;
 }
 
@@ -257,6 +269,7 @@ export const allNotesWidget: WidgetDefinition<AllNotesConfig> = {
   icon: "list-tree",
   accent: "#7c3aed",
   defaultSize: { w: 5, h: 8 },
+  liveRefresh: false,
   defaultConfig: () => ({ ...DEFAULTS, excludeFolders: [] }),
   normalizeConfig: (raw) => {
     const config = normalizeWith(DEFAULTS, raw);
@@ -275,7 +288,8 @@ export const allNotesWidget: WidgetDefinition<AllNotesConfig> = {
     const view = viewState(ctx.widget.id);
     const scope = config.folder.trim().replace(/\/+$/g, "");
     const root = body.createDiv({ cls: "hp-allnotes" });
-    const notes = collectNotes(app, config);
+    const files = ctx.getMarkdownFiles();
+    const notes = collectNotes(app, config, files, config.showMocs ? buildMocIndex(app, files) : new Map());
     ctx.setSubtitle(`${scope || "全库"} · ${notes.length} 篇`);
 
     const search = ctx.addHeaderContent("hp-allnotes-search-wrap");
@@ -375,10 +389,16 @@ export const allNotesWidget: WidgetDefinition<AllNotesConfig> = {
       paint();
     });
     paint();
+    ctx.onVaultChange((change) => {
+      const mocLinkUpdated = change.operations.includes("resolve") && change.paths.some((path) => MOC_HINT.test(path));
+      const pathChanged = change.paths.some((path) => !scope || path === scope || path.startsWith(`${scope}/`));
+      if (!mocLinkUpdated && !pathChanged) return;
+      ctx.scheduleIdle(() => ctx.rerender(), 1_200);
+    });
   },
 
   renderSettings(container, ctx) {
-    const { app, config } = ctx;
+    const { config } = ctx;
     new Setting(container).setName("分类口径").setDesc("主类与末级的来源；换口径后点亮的分类芯片会自动复位。")
       .addDropdown((dropdown) => dropdown
         .addOptions({ frontmatter: "frontmatter 分类字段", folder: "所在文件夹", tag: "标签" })
@@ -392,7 +412,9 @@ export const allNotesWidget: WidgetDefinition<AllNotesConfig> = {
         text.setPlaceholder("category").setValue(config.categoryField).onChange((value) => ctx.update({ categoryField: value.trim() }));
         text.inputEl.addClass("hp-setting-input-wide");
       });
-    const choices = folderChoices(app);
+    const files = ctx.plugin.vaultStats.getMarkdownFiles();
+    const loadedFiles = ctx.plugin.vaultStats.getAllLoadedFiles();
+    const choices = folderChoices(files, loadedFiles);
     if (config.folder && !(config.folder in choices)) choices[config.folder] = `${config.folder} · 0 篇（当前不存在）`;
     new Setting(container).setName("限定文件夹").setDesc("只索引该文件夹（含子文件夹）内的笔记；每一项后面的篇数越多排得越前。")
       .addDropdown((dropdown) => dropdown
@@ -421,7 +443,7 @@ export const allNotesWidget: WidgetDefinition<AllNotesConfig> = {
         });
       }
       const candidates: Record<string, string> = {};
-      for (const entry of listFolders(app)) {
+      for (const entry of listFolders(files, loadedFiles)) {
         if (entry.path === scope || excluded.includes(entry.path)) continue;
         if (excluded.some((prefix) => entry.path.startsWith(`${prefix}/`))) continue;
         candidates[entry.path] = entry.label;

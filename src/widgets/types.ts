@@ -1,6 +1,7 @@
-import type { App, Component } from "obsidian";
+import type { App, Component, TAbstractFile, TFile } from "obsidian";
 import type HomePagesPlugin from "../main";
 import type { WidgetInstance, WidgetKind } from "../types";
+import type { VaultChange, VaultMarkdownSort, VaultStatsOptions, VaultStatsSnapshot } from "../utils/vaultStats";
 
 /** 组件渲染时拿到的上下文：数据访问、持久化、生命周期。 */
 export interface WidgetContext<C> {
@@ -25,8 +26,19 @@ export interface WidgetContext<C> {
   addHeaderAction(icon: string, label: string, onClick: (event: MouseEvent) => void): HTMLElement;
   /** 注册定时器；组件重绘或卸载时自动清除。 */
   registerInterval(callback: () => void, ms: number): void;
+  /** 在浏览器空闲帧执行；首次渲染大库统计时避免阻塞首页打开。 */
+  scheduleIdle(callback: () => void, timeoutMs?: number): void;
   /** 注册清理函数；组件重绘或卸载时调用。 */
   registerCleanup(callback: () => void): void;
+  /** 共享的 vault 统计快照，组件之间不会重复遍历同一批文件。 */
+  getVaultStats(options?: VaultStatsOptions): VaultStatsSnapshot;
+  getMarkdownFiles(): readonly TFile[];
+  getMarkdownByBasename(): ReadonlyMap<string, TFile>;
+  getMarkdownSorted(sortBy: VaultMarkdownSort): readonly TFile[];
+  getFiles(): readonly TFile[];
+  getAllLoadedFiles(): readonly TAbstractFile[];
+  /** 订阅合并后的 vault 变化；返回注销函数。 */
+  onVaultChange(listener: (change: VaultChange) => void, options?: { includeMetadata?: boolean }): () => void;
   /** 渲染是否仍然有效（异步加载完成后用来判断是否已被重绘）。 */
   isAlive(): boolean;
   /** 是否处于布局编辑模式。 */
@@ -60,6 +72,10 @@ export interface WidgetDefinition<C = Record<string, unknown>> {
   renderSettings(container: HTMLElement, ctx: WidgetSettingsContext<C>): void;
   /** 库文件变化时是否需要重绘（默认 true）。 */
   liveRefresh?: boolean;
+  /** 普通文件事件是否触发重绘（默认 true；统计类组件可改为自行订阅）。 */
+  refreshOnVaultChange?: boolean;
+  /** metadataCache 解析完成时是否触发重绘（默认 true）。 */
+  refreshOnMetadataChange?: boolean;
 }
 
 export function normalizeWith<C extends Record<string, unknown>>(defaults: C, raw: Record<string, unknown>): C {

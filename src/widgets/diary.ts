@@ -74,6 +74,7 @@ export const diaryWidget: WidgetDefinition<DiaryConfig> = {
   icon: "book-open",
   accent: "#0d9488",
   defaultSize: { w: 5, h: 8 },
+  liveRefresh: false,
   defaultConfig: () => ({ ...DEFAULTS, excludeFolders: [] }),
   normalizeConfig: (raw) => {
     const config = normalizeWith(DEFAULTS, raw);
@@ -92,7 +93,7 @@ export const diaryWidget: WidgetDefinition<DiaryConfig> = {
     // 未配置时跟随核心「每日笔记」插件的文件夹，让组件开箱即用。
     const folder = config.folder.trim() || settings.folder;
     const entries: DiaryEntry[] = [];
-    for (const file of app.vault.getMarkdownFiles()) {
+    for (const file of ctx.getMarkdownFiles()) {
       if (!isInScope(file, folder) || isExcluded(file, config.excludeFolders)) continue;
       const date = dateFromBasename(file.basename);
       if (!date) continue;
@@ -101,7 +102,7 @@ export const diaryWidget: WidgetDefinition<DiaryConfig> = {
     // 名字不含日期的兜底：今天的日记可能叫别的格式（跟随每日笔记插件日期格式）。
     const today = toIsoDate(new Date());
     if (!entries.some((entry) => entry.date === today) && folder) {
-      const todayNote = findDailyNote(app, today);
+      const todayNote = findDailyNote(app, today, ctx.getMarkdownByBasename());
       if (todayNote && isInScope(todayNote, folder) && !isExcluded(todayNote, config.excludeFolders)) {
         entries.push({ file: todayNote, date: today, year: today.slice(0, 4), preview: "" });
       }
@@ -114,6 +115,14 @@ export const diaryWidget: WidgetDefinition<DiaryConfig> = {
       void getOrCreateDailyNote(ctx.app, today)
         .then((file) => ctx.openPath(file.path))
         .catch(() => undefined);
+    });
+    ctx.onVaultChange((change) => {
+      if (change.reason === "metadata") return;
+      const relevant = change.paths.some((path) => {
+        if (!path.toLowerCase().endsWith(".md")) return false;
+        return !folder || path === folder || path.startsWith(`${folder}/`);
+      });
+      if (relevant) ctx.scheduleIdle(() => ctx.rerender(), 1_000);
     });
 
     // 统计瓦片：总数 / 最近一篇 / 本月 / 年份跨度。

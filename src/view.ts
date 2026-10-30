@@ -1,4 +1,4 @@
-import { ItemView, Menu, TFile, WorkspaceLeaf, setIcon } from "obsidian";
+import { ItemView, Menu, WorkspaceLeaf, setIcon } from "obsidian";
 import type HomePagesPlugin from "./main";
 import type { HomePage, WidgetInstance } from "./types";
 import { createId } from "./utils/id";
@@ -9,6 +9,7 @@ import { createWidgetInstance, getWidgetDefinition, getWidgetProvider, normalize
 import { renderEmpty } from "./ui/dom";
 import type { WidgetContext } from "./widgets/types";
 import { animateLayout, moveBefore, PointerSorter } from "./ui/sortable";
+import type { VaultChangeReason } from "./utils/vaultStats";
 
 export const VIEW_TYPE_HOME = "home-pages-view";
 const REFRESH_DEBOUNCE_MS = 900;
@@ -91,7 +92,38 @@ class WidgetHost {
         const id = window.setInterval(callback, ms);
         this.cleanups.push(() => window.clearInterval(id));
       },
+      scheduleIdle: (callback, timeoutMs = 800) => {
+        const idleWindow = window as Window & {
+          requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number;
+          cancelIdleCallback?: (id: number) => void;
+        };
+        if (idleWindow.requestIdleCallback) {
+          const id = idleWindow.requestIdleCallback(() => {
+            if (token === this.token && body.isConnected) callback();
+          }, { timeout: timeoutMs });
+          this.cleanups.push(() => idleWindow.cancelIdleCallback?.(id));
+          return;
+        }
+        const id = window.setTimeout(() => {
+          if (token === this.token && body.isConnected) callback();
+        }, 0);
+        this.cleanups.push(() => window.clearTimeout(id));
+      },
       registerCleanup: (callback) => this.cleanups.push(callback),
+      getVaultStats: (options) => view.plugin.vaultStats.getStats(options),
+      getMarkdownFiles: () => view.plugin.vaultStats.getMarkdownFiles(),
+      getMarkdownByBasename: () => view.plugin.vaultStats.getMarkdownByBasename(),
+      getMarkdownSorted: (sortBy) => view.plugin.vaultStats.getMarkdownSorted(sortBy),
+      getFiles: () => view.plugin.vaultStats.getFiles(),
+      getAllLoadedFiles: () => view.plugin.vaultStats.getAllLoadedFiles(),
+      onVaultChange: (listener, options) => {
+        const unsubscribe = view.plugin.vaultStats.subscribe((change) => {
+          if (options?.includeMetadata === false && change.reason === "metadata") return;
+          listener(change);
+        });
+        this.cleanups.push(unsubscribe);
+        return unsubscribe;
+      },
       isAlive: () => token === this.token && body.isConnected,
       isEditing: () => view.isEditing()
     };
@@ -127,6 +159,7 @@ export class HomeView extends ItemView {
   private toolbarEl!: HTMLElement;
   private gridEl!: HTMLElement;
   private refreshTimer: number | null = null;
+  private refreshReason: VaultChangeReason | "mixed" | null = null;
   private cardSorter?: PointerSorter;
   private tabSorter?: PointerSorter;
   /** 正在拖动缩放时，取消并恢复原尺寸。 */
@@ -169,15 +202,8 @@ export class HomeView extends ItemView {
     this.addAction("pencil", "编辑布局", () => this.toggleEditing());
     this.addAction("settings", "插件设置", () => this.plugin.openSettings());
 
-    const schedule = (file?: unknown): void => {
-      if (file instanceof TFile && !["md", "base", "canvas", "duowei", "json"].includes(file.extension.toLowerCase())) return;
-      this.scheduleRefresh();
-    };
-    this.registerEvent(this.app.vault.on("modify", schedule));
-    this.registerEvent(this.app.vault.on("create", schedule));
-    this.registerEvent(this.app.vault.on("delete", schedule));
-    this.registerEvent(this.app.vault.on("rename", schedule));
-    this.registerEvent(this.app.metadataCache.on("resolved", () => this.scheduleRefresh()));
+    const unsubscribeVault = this.plugin.vaultStats.subscribe((change) => this.scheduleRefresh(change.reason));
+    this.register(unsubscribeVault);
 
     this.bindSorting();
     // 第三方插件（多维表格等）晚于首页加载时，注册后立刻把占位卡片换成真实内容。
@@ -576,17 +602,20 @@ export class HomeView extends ItemView {
 
   // ---- 刷新 ----------------------------------------------------------------
 
-  private scheduleRefresh(): void {
+  private scheduleRefresh(reason: VaultChangeReason | "mixed" = "files"): void {
+    this.refreshReason = this.refreshReason && this.refreshReason !== reason ? "mixed" : reason;
     if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
     this.refreshTimer = window.setTimeout(() => {
       this.refreshTimer = null;
+      const pendingReason = this.refreshReason ?? reason;
       // 用户正在卡片里输入（例如新增待办）时推迟刷新，避免输入框被销毁。
       const active = document.activeElement;
       if (active && this.contentEl.contains(active) && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) {
-        this.scheduleRefresh();
+        this.scheduleRefresh(pendingReason);
         return;
       }
-      this.refreshWidgets();
+      this.refreshReason = null;
+      this.refreshWidgets(pendingReason);
     }, REFRESH_DEBOUNCE_MS);
   }
 
@@ -607,10 +636,12 @@ export class HomeView extends ItemView {
   }
 
   /** 重绘所有组件内容（不动布局）。 */
-  refreshWidgets(): void {
+  refreshWidgets(reason?: VaultChangeReason | "mixed"): void {
     for (const host of this.hosts.values()) {
       const definition = getWidgetDefinition(host.widget.kind);
-      if (definition?.liveRefresh === false) continue;
+      if (reason && definition?.liveRefresh === false) continue;
+      if (reason === "metadata" && definition?.refreshOnMetadataChange === false) continue;
+      if (reason === "files" && definition?.refreshOnVaultChange === false) continue;
       void host.render();
     }
   }

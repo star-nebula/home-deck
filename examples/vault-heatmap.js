@@ -4,7 +4,7 @@
 // 横轴为月份英文缩写、纵轴标注 Mon / Wed / Fri。
 //
 // 使用方法：把本文件复制到你的自定义组件目录（如 .scripts/home-pages/），
-// 保存后 Home Pages 会自动加载；在卡片设置中可调整周数、排除目录、强调色与自动刷新间隔。
+// 保存后 Home Pages 会自动加载；统计默认按需计算、文件事件合并刷新，不进行短周期全库扫描。
 module.exports = {
   kind: "vault-heatmap",
   name: "全库热力值",
@@ -12,67 +12,64 @@ module.exports = {
   icon: "flame",
   accent: "#22c55e",
   defaultSize: { w: 10, h: 4 },
+  liveRefresh: false,
 
   defaultConfig() {
     return {
-      weeks: 53,            // 显示周数（26–106）
-      excludeFolders: "",   // 额外排除的目录，逗号分隔，如 "Archive,模板"
-      autoRefreshMinutes: 5 // 自动刷新间隔（分钟，0 = 不自动刷新）
+      configVersion: 2,
+      weeks: 53,             // 显示周数（26–106）
+      excludeFolders: "",    // 额外排除的目录，逗号分隔，如 "Archive,模板"
+      autoRefreshMinutes: 0  // 可选的兜底刷新（分钟，0 = 只跟随 vault 变化）
     };
   },
 
   render(body, ctx) {
+    const configVersion = Number(ctx.config.configVersion) || 1;
+    const configuredRefresh = Math.max(0, Number(ctx.config.autoRefreshMinutes) || 0);
+    // v1 默认值会持久化成 5；升级时把这个旧默认迁移到 0，其它显式非默认值保持不变。
+    const migratedRefresh = configVersion < 2 && configuredRefresh === 5 ? 0 : configuredRefresh;
     const cfg = {
       weeks: Math.max(26, Math.min(106, Number(ctx.config.weeks) || 53)),
       excludeFolders: String(ctx.config.excludeFolders || "")
-        .split(",")
+        .split(/[\n,，]/)
         .map((s) => s.trim().replace(/^\/+|\/+$/g, ""))
         .filter(Boolean),
-      autoRefreshMinutes: Math.max(0, Number(ctx.config.autoRefreshMinutes) || 0)
+      autoRefreshMinutes: migratedRefresh
     };
-
-    // —— 数据：全库 md 按修改日分日计数（文件 × 天去重，排除隐藏目录与额外排除项）——
-    const files = ctx.app.vault.getMarkdownFiles();
-    const excluded = cfg.excludeFolders;
-    const daySet = new Map(); // 'YYYY-MM-DD' -> Set(文件路径)
-    for (const f of files) {
-      if (f.path.startsWith(".")) continue;
-      if (excluded.some((p) => f.path === p || f.path.startsWith(`${p}/`))) continue;
-      const d = new Date(f.stat.mtime);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      let set = daySet.get(key);
-      if (!set) daySet.set(key, (set = new Set()));
-      set.add(f.path);
-    }
-    const dayCount = new Map();
-    let total = 0;
-    for (const [k, set] of daySet) {
-      dayCount.set(k, set.size);
-      total += set.size;
+    if (configVersion < 2) {
+      void ctx.saveConfig({ configVersion: 2, autoRefreshMinutes: migratedRefresh });
     }
 
-    // —— 日历骨架：从本周周六回推 N 周，列 = 周（周日→周六）——
-    const HEAT_WEEKS = cfg.weeks;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const end = new Date(today);
-    end.setDate(end.getDate() + (6 - end.getDay())); // 本周周六
-    const start = new Date(end);
-    start.setDate(start.getDate() - (HEAT_WEEKS * 7 - 1));
-    const cells = []; // { date, count }
-    let activeDays = 0;
-    // 按「日期部分」逐日推进（setDate），夏令时时区不会漂移；
-    // 毫秒累加（t += 86400000）在 DST 切换后会把整条日历错位一天。
-    for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      const c = dayCount.get(key) || 0;
-      if (c > 0) activeDays += 1;
-      cells.push({ date: new Date(d), count: c, key });
-    }
-    const max = Math.max(1, ...cells.map((c) => c.count));
+    // 首次统计放到空闲帧，打开首页时不阻塞首屏；共享快照会与其它组件复用。
+    body.createDiv({ cls: "hp-empty", text: "正在整理知识库热力…" });
+    ctx.scheduleIdle(() => {
+      if (!ctx.isAlive()) return;
+      body.empty();
+      const stats = ctx.getVaultStats({ excludeFolders: cfg.excludeFolders, excludeHidden: true });
+      const dayCount = new Map(Object.entries(stats.activityByDay));
+      const total = Object.values(stats.activityByDay).reduce((sum, count) => sum + count, 0);
 
-    // —— 渲染 ——
-    body.empty();
+      // —— 日历骨架：从本周周六回推 N 周，列 = 周（周日→周六）——
+      const HEAT_WEEKS = cfg.weeks;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const end = new Date(today);
+      end.setDate(end.getDate() + (6 - end.getDay())); // 本周周六
+      const start = new Date(end);
+      start.setDate(start.getDate() - (HEAT_WEEKS * 7 - 1));
+      const cells = []; // { date, count }
+      let activeDays = 0;
+      // 按「日期部分」逐日推进（setDate），夏令时时区不会漂移；
+      // 毫秒累加（t += 86400000）在 DST 切换后会把整条日历错位一天。
+      for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const c = dayCount.get(key) || 0;
+        if (c > 0) activeDays += 1;
+        cells.push({ date: new Date(d), count: c, key });
+      }
+      const max = Math.max(1, ...cells.map((c) => c.count));
+
+      // —— 渲染 ——
     const wrap = body.createDiv({ cls: "vh-wrap" });
     wrap.style.display = "flex";
     wrap.style.flexDirection = "column";
@@ -197,8 +194,10 @@ module.exports = {
       .vh-lv3 { background: color-mix(in srgb, ${ctx.config.accent || "#22c55e"} 75%, var(--background-secondary)); }
       .vh-lv4 { background: ${ctx.config.accent || "#22c55e"}; }
     `;
+    }, 1_000);
 
-    // —— 定时刷新（卡片重绘或卸载时自动注销）——
+    // 文件事件由 Home Pages 合并后再重绘；定时器仅作为用户显式配置的兜底。
+    ctx.onVaultChange(() => ctx.rerender(), { includeMetadata: false });
     if (cfg.autoRefreshMinutes > 0) {
       ctx.registerInterval(() => ctx.rerender(), cfg.autoRefreshMinutes * 60 * 1000);
     }
@@ -233,7 +232,7 @@ module.exports = {
 
     new Setting(container)
       .setName("自动刷新（分钟）")
-      .setDesc("0 = 不自动刷新，仅打开首页时计算")
+      .setDesc("默认 0：只在打开首页、文件变化或点击标题栏刷新时更新；大于 0 时增加兜底刷新。")
       .addText((text) =>
         text.setValue(String(ctx.config.autoRefreshMinutes)).onChange((val) => {
           const n = parseInt(val, 10);
