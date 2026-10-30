@@ -1,7 +1,7 @@
 import { Notice, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import { createApi, type HomeDeckApi } from "./api";
 import { createDefaultPage } from "./core/defaults";
-import { LEGACY_ID, LEGACY_VIEW_TYPE, READY_EVENT, VIEW_TYPE_HOME } from "./core/identity";
+import { LEGACY_ID, LEGACY_VIEW_TYPE, READY_EVENT, UPSTREAM_ID, VIEW_TYPE_HOME } from "./core/identity";
 import { LayoutStore } from "./core/layoutStore";
 import type { HomeDeckHost, WidgetServices } from "./core/ports";
 import { SettingsRepository } from "./core/settingsRepository";
@@ -210,7 +210,8 @@ export default class HomeDeckPlugin extends Plugin implements HomeDeckHost {
 
   private isLegacyPluginEnabled(): boolean {
     const plugins = (this.app as unknown as PluginsApp).plugins;
-    return Boolean(plugins?.enabledPlugins?.has(LEGACY_ID) || plugins?.plugins?.[LEGACY_ID]);
+    // 只认真正加载起来的旧插件实例；community-plugins.json 里可能有已卸载的残留 id。
+    return Boolean(plugins?.plugins?.[LEGACY_ID] || plugins?.plugins?.[UPSTREAM_ID]);
   }
 
   /** 老布局升级：把三个数据源组件补到当前页（已存在的跳过）。 */
