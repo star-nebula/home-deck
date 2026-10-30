@@ -43,7 +43,8 @@ export const vaultHeatmapWidget: WidgetDefinition<VaultHeatmapConfig> = {
   defaultConfig: () => ({ ...DEFAULTS }),
   normalizeConfig: (raw) => {
     const config = normalizeWith(DEFAULTS, raw);
-    config.configVersion = clampInt(config.configVersion, 1, 2, 2);
+    // 旧自定义组件的配置里没有 configVersion；保留 1，让 render 执行 5→0 的刷新迁移。
+    config.configVersion = raw.configVersion === undefined ? 1 : clampInt(config.configVersion, 1, 2, 2);
     config.weeks = clampInt(config.weeks, 26, 106, DEFAULTS.weeks);
     config.autoRefreshMinutes = clampInt(config.autoRefreshMinutes, 0, 24 * 60, DEFAULTS.autoRefreshMinutes);
     config.excludeFolders = toStringList(config.excludeFolders).join(",");
