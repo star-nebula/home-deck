@@ -6,13 +6,13 @@ import { resolve } from "node:path";
 import esbuild from "esbuild";
 
 const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.HOME_PAGES_PLAYWRIGHT_MODULE || "playwright");
+const { chromium } = require(process.env.HOME_DECK_PLAYWRIGHT_MODULE || process.env.HOME_PAGES_PLAYWRIGHT_MODULE || "playwright");
 const bundle = await esbuild.build({
   entryPoints: ["tests/sorting-fixture.ts"], bundle: true, platform: "browser", format: "iife",
   write: false, alias: { obsidian: resolve("tests/obsidian-stub.ts") }, logLevel: "warning"
 });
 const css = await readFile("styles.css", "utf8");
-const browser = await chromium.launch({ headless: true, channel: process.env.HOME_PAGES_TEST_BROWSER || "chromium" });
+const browser = await chromium.launch({ headless: true, channel: process.env.HOME_DECK_TEST_BROWSER || process.env.HOME_PAGES_TEST_BROWSER || "chromium" });
 // Most checks read card positions right after a drop, so run them without the FLIP slides;
 // the "smooth feedback" test turns motion back on.
 const page = await browser.newPage({ viewport: { width: 1100, height: 600 }, hasTouch: true, reducedMotion: "reduce" });

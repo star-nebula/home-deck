@@ -31,7 +31,7 @@ import {
 const normalizePomodoro = (raw: Record<string, unknown>): PomodoroConfig => pomodoroWidget.normalizeConfig!(raw);
 const TEST_REGISTRY = new WidgetRegistry(BUILTIN_WIDGETS);
 
-const VAULT = process.env.HOME_PAGES_TEST_VAULT ?? "D:/data/obsidian_pls/duowei-stress-vault";
+const VAULT = process.env.HOME_DECK_TEST_VAULT ?? process.env.HOME_PAGES_TEST_VAULT ?? "D:/data/obsidian_pls/duowei-stress-vault";
 let failures = 0;
 let skippedSuites = 0;
 
@@ -46,7 +46,7 @@ function skip(suite: string, reason: string): void {
 }
 
 const vaultReady = await fs.stat(VAULT).then(() => true, () => false);
-const vaultMissingReason = `夹具库不存在：${VAULT}（用 HOME_PAGES_TEST_VAULT 指定）`;
+const vaultMissingReason = `夹具库不存在：${VAULT}（用 HOME_DECK_TEST_VAULT 指定）`;
 
 async function runWithVault(suite: string, fn: () => Promise<void>): Promise<void> {
   if (!vaultReady) {
@@ -726,7 +726,7 @@ function testMedia(): void {
 }
 
 async function testOpmlAndFollow(): Promise<void> {
-  const followOpmlPath = process.env.HOME_PAGES_TEST_OPML;
+  const followOpmlPath = process.env.HOME_DECK_TEST_OPML ?? process.env.HOME_PAGES_TEST_OPML;
   let opmlContent = "";
   if (followOpmlPath) {
     try {
@@ -736,7 +736,7 @@ async function testOpmlAndFollow(): Promise<void> {
     }
   }
   if (!opmlContent) {
-    skip("follow.opml 60-feed fixture checks", "未设置 HOME_PAGES_TEST_OPML 或文件读不到");
+    skip("follow.opml 60-feed fixture checks", "未设置 HOME_DECK_TEST_OPML 或文件读不到");
   }
 
   if (opmlContent) {
