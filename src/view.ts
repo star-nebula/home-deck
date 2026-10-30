@@ -540,7 +540,7 @@ export class HomeView extends ItemView {
       const page = this.page;
       const index = page.widgets.findIndex((item) => item.id === id);
       if (index < 0) return;
-      page.widgets[index] = updated;
+      this.host.layout.updateWidget(id, updated);
       await this.host.saveSettings();
       this.replaceCard(updated);
     }).open();

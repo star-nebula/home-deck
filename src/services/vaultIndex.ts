@@ -278,7 +278,9 @@ export class VaultIndex implements VaultDataService {
   applyMetadata(path?: string): void {
     this.ensureInitialized();
     this.tagsDirty = true;
-    this.invalidateStats();
+    // metadata 不改变 mtime，排序缓存仍然有效；只失效统计与 tag。
+    this.statsDirty = true;
+    this.statsCache.clear();
     this.bumpGeneration();
     this.scheduleNotification("metadata", "metadata", path);
   }
