@@ -8,7 +8,7 @@ import { createId } from "./utils/id";
 import { openPath } from "./utils/vault";
 import { AddWidgetModal, ConfirmModal, PromptModal, WidgetSettingsModal } from "./ui/modals";
 import { renderEmpty } from "./ui/dom";
-import { animateLayout, moveBefore, PointerSorter } from "./ui/sortable";
+import { animateLayout, PointerSorter } from "./ui/sortable";
 
 export { VIEW_TYPE_HOME };
 
