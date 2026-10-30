@@ -1,269 +1,101 @@
-[![English](https://img.shields.io/badge/Language-English-blue)](README.md)
-[![简体中文](https://img.shields.io/badge/Language-简体中文-red)](README.zh-CN.md)
+# Home Deck · Obsidian 首页看板
 
-# Home Pages · Obsidian 首页看板
+Home Deck 是一个快速、可定制的 Obsidian 首页仪表盘：12 列自适应网格、可拖拽缩放的卡片、多页面，以及 19 个内置组件。布局和设置只保存在本地 `data.json`，没有遥测，也没有隐藏的后台上报。
 
-一款专为 Obsidian 打造的现代化、模块化响应式首页看板插件。基于 12 列自适应网格，支持组件自由增删、拖拽排序、平滑缩放与独立配置；支持多页面管理与第三方插件扩展。
+> **项目来源：** Home Deck 是 [jepicaju862-lab/home-pages](https://github.com/jepicaju862-lab/home-pages)（GPL-3.0）的独立分支，由 [star-nebula](https://github.com/star-nebula) 维护。原项目的功劳归原作者所有。插件 id：`home-deck`。
+>
+> **从 Home Pages 升级：** 安装 Home Deck 并启用一次，布局会自动从 `.obsidian/plugins/home-pages-star-nebula/data.json` 复制过来；旧插件和旧数据保持原样。迁移前会写入备份 `.obsidian/plugins/home-deck/data.pre-migration.json`。
 
-> [!IMPORTANT]
-> **关于本项目：** 本项目 fork 自 [jepicaju862-lab/home-pages](https://github.com/jepicaju862-lab/home-pages)（GPL-3.0 协议）。由于原项目长期未回应 issue 与 PR，自即日起由 [star-nebula](https://github.com/star-nebula) 独立维护，原作的贡献归属于原作者。插件 id 为 `home-pages-star-nebula`，可与原版插件共存。原版用户迁移方法：重新安装本版本后，把 `.obsidian/plugins/home-pages/data.json` 复制到 `.obsidian/plugins/home-pages-star-nebula/` 即可保留原有布局。
+## 功能
 
-- **发布产物：** [GitHub Releases](https://github.com/star-nebula/home-pages/releases) —— 本 fork **尚未发布任何 Release**；从上游仓库继承的 tag（`v0.3.1` 及更早）在本仓库只是 tag，不含任何发布产物。
-- **最低 Obsidian 版本：** 1.7.2
-- **支持平台：** 桌面端与移动端（iOS / Android）
-- **开源协议：** [GNU 通用公共许可证 v3.0](LICENSE)
+| 分类 | 组件 |
+| :--- | :--- |
+| **首页基础** | 欢迎横幅（时钟 / 天气 / 库统计）、最近笔记、快捷入口、倒计时与纪念日、每日一言、笔记嵌入 |
+| **专注与计划** | 番茄时钟、任务看板、习惯打卡、日记聚合、那年今日 |
+| **库内洞察** | 全部笔记索引、知识地图、库统计 |
+| **可选集成** | 多维表格摘要、批注收件箱、微信收件、聚合信息流、主流媒体 / RSS 阅读 |
 
-> [!NOTE]
-> **本地优先与隐私保障：** Home Pages 默认完全运行在本地 Vault 中，布局与状态均持久化存储于本地 `data.json`，无任何隐式网络追踪或遥测行为。
+亮点：
 
----
+- **12 列自适应网格**：桌面、平板、手机自动重排。
+- **所见即所得布局编辑**：拖动卡片、右下角缩放、复制/删除、页面排序。
+- **多首页**（工作 / 生活 / 项目等），标签栏可拖动排序。
+- **JSON 导入导出**，方便备份和跨库迁移。
+- **按路径刷新**：文件变化时只重绘受影响的可见卡片，隐藏卡片保持空闲，大库也不卡。
 
-## 🌟 核心功能
+## 安装
 
-### 🧩 丰富内置看板组件
+1. 从最新 Release 下载 `main.js`、`manifest.json`、`styles.css`。
+2. 创建 `<vault>/.obsidian/plugins/home-deck/`。
+3. 把三个文件复制进去。
+4. 在 **设置 → 第三方插件** 中启用 **Home Deck**。
 
-Home Pages 内置了 12+ 种生产力组件，可在首页中灵活拼装：
+最低 Obsidian 版本：**1.7.2**，支持桌面端和移动端。
 
-| 组件 | 功能特性 | 主要配置项 |
-| :--- | :--- | :--- |
-| **欢迎横幅** | 时段问候、称呼定制、笔记与标签总量、实时时钟（可显示秒）、天气预报、库龄与目标倒计时徽章、自定义背景图 | 天气源（中国气象局国家站 / Open-Meteo / 和风天气）、城市/区县选定、背景遮罩、各字段开关、库龄起算日、目标日期 |
-| **最近笔记** | 快速浏览并打开最近修改或创建的笔记列表 | 限制条数、指定文件夹白名单/黑名单、排序方式、显示父目录开关 |
-| **全部笔记** | 全库笔记索引：分类芯片 + 即时过滤（标题 / 文件名 / 子分类 / 所属 MOC）+ 主类与末级分组折叠列表，行内带简介与所属 MOC，点击直达 | 分类口径（frontmatter 字段 / 所在文件夹 / 标签）、分类字段名、限定文件夹（下拉列出各文件夹及其笔记数，多的排前）、排除文件夹（逐个挑选、可单条移除）、简介与所属 MOC 开关、最多显示条数 |
-| **知识地图** | 可配置范围的 Obsidian 原生图谱与分区统计；支持全库、知识库、知识库 + 作坊/档案或任意自定义文件夹，点击分区芯片即时过滤并恢复汇总，保留原生缩放、拖拽、过滤与点击打开 | 图谱范围、自定义文件夹、排除文件夹、默认分区、统计芯片、芯片计数、自动分区配色 |
-| **快捷入口** | 置顶常用笔记、文件夹或任意格式附件的图标磁贴 | 路径智能联想、自定义名称、Lucide 图标选择器、磁贴排序、每行列数 |
-| **倒计时与纪念日** | 精确计算目标日倒计时或纪念日已过天数 | 目标日期、正数/倒数方向、备注与副标题 |
-| **番茄专注时钟** | 专注 / 短休息 / 长休息循环计时器：带进度环、状态控制、本轮进度点及今日/本周完成数统计；计时器由插件守护，切页或重启后无缝继续计时；支持系统通知与提示音 | 工作与休息时长、长休息周期间隔、自动轮转开关、提示音、系统原生通知 |
-| **每日一言** | 从特定笔记（一行一条）或内置语录中提取格言警句 | 来源笔记路径、按天轮换或随机模式、自定义语录列表 |
-| **习惯打卡** | 今日打卡清单 + GitHub 风格热力图（支持周 / 月 / 年视图）+ 连续打卡天数 | 习惯定义列表、存储位置（插件本地持久化 / Daily Note 任务块同步） |
-| **任务看板** | 自动提取笔记中的 `- [ ]` 待办，按待办 `[ ]` / 进行中 `[/]` / 已完成 `[x]` 分栏呈现；支持拖拽换列、回车新增、双击即时编辑文字 | 来源文件/目录过滤、默认收集箱、列标题自定义、隐藏已完成 |
-| **全库统计** | 展示笔记总数、标签总数、估算字数、附件数、文件夹数、库龄、今日新建与本周修改数据 | 指标项开关、网格分列数、排除特定文件夹 |
-| **那年今日** | 智能回忆往年同月同日创建或记录的笔记 | 显示条数、日期属性字段名、按文件名日期回退、ctime 回溯 |
-| **笔记嵌入** | 将任意笔记正文（或指定标题章节）直接渲染在看板中 | 目标笔记路径、定位标题、是否隐藏 Frontmatter |
-| **聚合信息流** *(可选)* | 汇总多维表格情报、批注中心收件箱与微信同步消息的高级信息流 | 来源开关、表格筛选、日期字段、微信与批注源接入 |
-| **待办与日程** *(多维表格联动)* | 扫描库内多维表格（.duowei），提取逾期、今天、待办与最近更新，直达表格行与关联笔记 | 扫描范围、排除表格、状态与日期映射 |
-| **微信收件箱** | 聚合 WeChat2Ob 或个人收件箱消息，快速查看文字、语音转写与图片缩略图 | 数据源选择、仅查看待整理、条数限制、快速标记已整理 |
-| **批注与复习** | 对接 Mobile Ink Annotation Pro，显示待处理批注、复习进度与题库收藏 | 统计卡片、缩略图展示、一键打开批注中心 |
-| **主流媒体与 RSS 订阅** | 汇聚权威媒体与个人自定义 RSS / OPML 订阅，支持 Follow 导出导入、多级分类聚合、播客视频识别与一键离线全文剪藏 | 频道导航模式、默认频道、OPML 导入导出、自定义分类管理、剪藏文件夹 |
+## 编辑布局
 
----
+点击视图标题栏的 **编辑布局**：
 
-## 📐 响应式网格与自由布局
+- 拖动卡片标题/握把调整顺序；拖动右下角手柄调整尺寸。
+- 卡片编辑条支持前移、后移、调宽高、配置、复制、删除。
+- 拖动页面标签排序；右键标签可重命名、左右移动或删除。
+- 按 `Esc` 取消拖动或缩放。
 
-- **12 列自适应网格**：根据窗口宽度智能折行与等比缩放，无论是横屏宽屏显示器还是手机竖屏均有优异视觉体验。
-- **所见即所得编辑**：
-  - 点击右上角「编辑布局」即可进入自由编排模式。
-  - 用鼠标拖动卡片重排顺序；触屏可拖动标题栏或手柄。落点提示支持左右、上下与卡片间隙，拖到视图边缘可自动滚动；按 Esc 取消。
-  - 拖动卡片右下角手柄调整宽高，按列、按行吸附并实时显示尺寸（窄屏只调高度，Esc 取消）；也可用卡片底部按钮或聚焦手柄后按方向键逐格调整。编辑模式下网格显示 12 列参考线。
-  - 支持前移、后移、复制组件与删除组件。
-- **多页面管理**：
-  - 标签栏末尾的「+」随时新建独立首页（如“工作工作台”、“生活记录”、“项目仪表盘”）。
-  - 编辑模式下可直接拖动标签调整页面顺序；右键标签可重命名、左右移动或删除页面。
-- **JSON 导入与导出**：一键备份完整页面布局与组件配置，方便跨设备与多库迁移。
+## 插件开发者 Host API
 
----
-
-## 🔌 给其他插件的宿主 API
-
-Home Pages 提供了轻量开放的插件宿主 API，允许第三方 Obsidian 插件向首页注册自定义卡片与视图，实现生态共建：
+其他插件可以通过 Host API 注册组件，不需要改 Home Deck 源码：
 
 ```ts
-// 当首页插件加载完成后获取 API 实例（亦可监听 "home-pages-star-nebula:ready" 事件）
-const api = app.plugins.plugins["home-pages-star-nebula"]?.api;
+const api = app.plugins.plugins["home-deck"]?.api;
+// 也可以监听 workspace 事件 "home-deck:ready"。
 
-// 1. 注册新组件类型（定义渲染、配置表单与默认值）
 const unregister = api.registerWidget(myWidgetDefinition, "my-plugin-id");
 
-// 2. 编程式将卡片固定到当前首页
 api.pinWidget("my-widget-kind", { ref: "note-path" }, {
-  title: "我的自定义卡片",
+  title: "固定视图",
   w: 6,
   h: 4,
   provider: "my-plugin-id"
 });
 
-// 3. 当源数据变化时触发看板重绘
 api.refresh("my-widget-kind");
-
-// 4. 调用与内置组件风格一致的 UI 助手
-api.ui.renderKpi(containerEl, { label: "今日完成", value: 12 });
+api.ui.renderKpi(containerEl, { label: "已完成", value: 12 });
 api.ui.renderEmpty(containerEl, { message: "暂无数据" });
 ```
 
-> **生态案例：** **多维表格（duowei-table-pro ≥ 1.4.0）** 通过宿主 API 注册了 `duowei-view`，支持在多维表格视图右键直接「固定到首页」，在首页中无缝呈现实时看板、日历、时间线与甘特图。
+组件定义与 `src/core/ports.ts` 中的 `WidgetDefinition` 一致：`kind`、`name`、`description`、`icon`、`accent`、`defaultSize`、`defaultConfig`、`render`、`renderSettings`，以及可选的刷新策略 / `refreshScope`。
 
----
+> **不再支持自定义 JavaScript 脚本。** 旧分支允许从库内目录执行 `.js` 文件；Home Deck 为了安全和启动性能移除了该加载器。请改用小型插件 + Host API。
 
-## 🧩 用户自定义组件（脚本目录与热重载）
-
-除了第三方插件注册外，用户也可以直接用原生 JavaScript 编写自己的专属组件：
-
-1. 打开插件设置，找到 **「自定义组件」** 分区。
-2. 配置 **「自定义组件目录」**（如 `.scripts/home-pages/`），或直接点击 **「📄 生成示例组件模板」**，插件会自动在库中创建示例文件 `demo-widget.js` 并打开。
-   隐藏目录（如 `.scripts/home-pages/`）也受支持，约每 2 秒检测脚本变更；普通目录继续使用文件事件热重载。
-3. 编写符合规范的 `.js` 脚本（支持 `module.exports = { ... }` 或函数返回）：
-   ```javascript
-   module.exports = {
-     kind: "user-my-clock",          // 唯一标识
-     name: "我的时钟",                // 显示名称
-     description: "动态时间显示",     // 描述
-     icon: "clock",                  // Lucide 图标
-     accent: "#6366f1",              // 主题强调色
-     defaultSize: { w: 4, h: 3 },     // 默认尺寸 (宽 1-12 列)
-     defaultConfig: () => ({ greeting: "你好" }),
-     render(body, ctx) {
-       body.empty();
-       const el = body.createDiv();
-       el.setText(`${ctx.config.greeting} · ${new Date().toLocaleTimeString()}`);
-       ctx.registerInterval(() => {
-         el.setText(`${ctx.config.greeting} · ${new Date().toLocaleTimeString()}`);
-       }, 1000);
-     }
-   };
-   ```
-4. **保存即上桌**：新脚本第一次加载成功时会自动放到当前首页（每个组件只自动加一次，删掉卡片后再改脚本不会重新加入；可在设置「新组件自动加入首页」关闭）。
-5. **实时热重载**：在 Obsidian 内或外部编辑器（如 VS Code）中修改保存 `.js` 文件，首页卡片将**自动重新加载并即时重绘**，调试体验丝滑！
-6. **社区示例**：[examples/vault-heatmap.js](examples/vault-heatmap.js) 提供了一个开箱即用的「全库热力值」组件——GitHub 风格日历热力图，将全库笔记按修改日分日计数（同文件同日去重，横轴为月份缩写、纵轴标注 Mon / Wed / Fri）。把文件复制到你的自定义组件目录即可使用，卡片设置里可调整周数、排除目录、强调色与自动刷新间隔。
-
----
-
-## 📥 安装指南
-
-### 方式一：Obsidian 官方社区插件
-
-本 fork **未**上架官方社区目录。在「**设置 → 第三方插件 → 浏览**」中搜索 **Home Pages** 安装到的是上游原版插件，而非本 fork。请使用方法二手动安装，或参考「开发与贡献」从源码构建。
-
-### 方式二：手动安装
-
-1. 本 fork 暂无 Release 产物可下载，请从源码构建：
-   ```bash
-   git clone https://github.com/star-nebula/home-pages.git
-   cd home-pages
-   npm ci
-   npm run build
-   ```
-   构建后仓库根目录即得到所需的三个文件：`main.js`、`manifest.json`、`styles.css`。
-2. 在您的 Obsidian 库目录中进入插件文件夹（文件夹名建议与插件 id 一致）：
-   ```text
-   <vault>/.obsidian/plugins/home-pages-star-nebula/
-   ```
-   （若目录不存在请手动新建 `home-pages-star-nebula` 文件夹）
-3. 将上述 3 个文件放入该目录。
-4. 在 Obsidian「**设置 → 第三方插件**」列表中重新加载并启用 **Home Pages**。
-
----
-
-## 🖊️ 使用方法
-
-1. **打开首页**：
-   - 单击左侧活动功能区（Ribbon）的首页图标。
-   - 或按下 `Ctrl/Cmd + P` 打开命令面板，执行 `Home Pages: 打开首页`。
-2. **定制页面与组件**：
-   - 在首页标题栏右侧点击「**编辑布局**」按钮。
-   - 点击顶部「**添加组件**」可在弹出列表中挑选任意组件插入。
-   - 点击任意卡片右上角的「齿轮」图标，可独立修改该组件的专属配置（如修改天气城市、习惯清单、统计指标等）。
-3. **全局设置**：
-   - 打开 Obsidian「设置 → Home Pages」。
-   - 可配置启动时自动打开首页、行高（像素）、网格间距、最大页面宽度以及多页面管理。
-
----
-
-## ⚙️ 核心设置说明
-
-| 设置项 | 说明 | 默认值 |
-| :--- | :--- | :--- |
-| **启动时自动打开** | 启动 Obsidian 时自动打开默认首页 | 开启 |
-| **在新标签页中打开** | 打开首页时是否在新标签页打开，关闭则复用当前标签页 | 开启 |
-| **行高** | 网格高度单位（24px - 96px） | 40px |
-| **间距** | 组件卡片之间的网格边距（4px - 40px） | 16px |
-| **内容最大宽度** | 首页内容最大宽度限制（填 0 表示全屏自适应铺满） | 1400px |
-| **始终显示页面标签栏** | 单页面时是否也常驻显示页面导航栏 | 开启（新安装） |
-| **新组件自动加入首页** | 自定义组件脚本第一次加载成功时自动放到当前首页 | 开启 |
-| **页面管理** | 增删、复制、重命名多首页布局 | 默认首页 |
-| **布局导入 / 导出** | 以标准 JSON 格式复制与导入看板排版与配置 | - |
-
----
-
-## 🔒 数据安全与隐私
-
-- **本地优先**：所有看板排版、番茄钟记录、习惯打卡等数据均存储于本地 Vault 的 `data.json` 中。
-- **敏感数据零泄露**：插件不搜集任何使用数据，不设任何后台分析脚本。
-- **天气服务说明**：
-  - 中国气象局数据源直接请求国家气象公开接口，免 API Key。
-  - Open-Meteo 与和风天气仅在配置相应数据源时发起对应的标准天气查询请求。
-- **代码纯净度保障**：构建流水线中嵌入了 `scripts/verify-bundle.mjs` 安全审查，禁止代码中出现 `eval()`、动态 `createElement('script')` 或 `new Function()`。
-
----
-
-## ❓ 常见问题
-
-### Q: 手机端 / 移动端布局会乱吗？
-**A:** 不会。Home Pages 针对小屏与移动端专门设计了移动端流式自适应规则。在窄屏下，12 列网格会自动调整为全宽单列或紧凑双列流动布局，保证触控与阅读体验。
-
-### Q: 番茄时钟切换页面或关闭 Obsidian 后还会继续计时吗？
-**A:** 会的。番茄时钟的计时起点与状态均持久化保存在插件后台。无论是切换笔记、重绘视图还是重启 Obsidian，时钟均能精准恢复并准时触发到点提示。
-
-### Q: 如何恢复初始预设布局？
-**A:** 在「设置 → Home Pages → 页面」中，点击「＋ 新建默认布局页面」，即可随时生成一份初始看板配置。
-
----
-
-## 🧑‍💻 开发与贡献
-
-工作区分工、开发目标与手动部署流程见 [开发与本地部署](docs/development.md)。
-
-欢迎社区开发者提交 Pull Request 或报告 Issue！
+## 开发
 
 ```bash
-# 1. 安装依赖
 npm install
-
-# 2. 启动本地监听构建
-npm run dev
-
-# 3. 运行代码规范审计
+npm run dev        # esbuild watch，并同步产物到 .dev-target
 npm run lint
-
-# 4. 生产打包与安全门禁校验
-npm run build
+npm run build      # tsc + 生产打包 + 安全检查/身份校验
+npm test           # 集成测试 + 迁移/索引测试
+npm run test:sorting  # Playwright 布局测试（需要 playwright）
+npm run deploy     # 复制产物到 HOME_DECK_DEV_PLUGIN_DIR
 ```
 
-### 目录结构
+开发目标目录可用环境变量 `HOME_DECK_DEV_PLUGIN_DIR`，或在仓库根写一行 `.dev-target`（绝对路径）。详见 `docs/development.md`。
+
+源码结构：
 
 ```text
-src/
-  main.ts            # 插件入口：命令、功能区图标、生命周期
-  view.ts            # 看板视图：12列网格、拖拽重排、标签栏交互
-  settings.ts        # 设置面板：布局参数、页面管理与 JSON 导入导出
-  types.ts           # 核心数据模型与配置接口
-  ui/                # 通用 UI 模块（添加组件弹窗、模态对话框、输入联想）
-  widgets/           # 12+ 内置组件实现与组件注册表
-  utils/             # 工具函数（日期时间、库操作、天气解析、三方插件检测）
-tests/               # 模块桩与测试用例
-scripts/             # 构建校验脚本（verify-bundle.mjs 等）
+src/core/        身份、持久化类型、端口、注册表、设置仓库、布局仓库、迁移
+src/services/    增量 VaultIndex、mtime 缓存
+src/widgets/     19 个内置组件 + builtins.ts
+src/ui/          共享 DOM、弹窗、设置、排序工具
+src/view.ts      HomeView + 每张卡片的 WidgetHost
+src/main.ts      插件生命周期与服务装配
 ```
 
----
+## 隐私
 
-## 📋 版本发布记录
+Home Deck 只读取本地库和本地插件数据。天气、媒体/RSS 与可选集成只会在卡片可见或被手动刷新时发起网络请求，不收集使用数据。
 
-关于各版本的详细演进与更新日志，请参阅 [RELEASE_NOTES.zh-CN.md](RELEASE_NOTES.zh-CN.md)。
+## 许可证
 
----
-
-## 🤝 支持与反馈
-
-- **Bug 反馈与功能建议——[本仓库的 issue](https://github.com/star-nebula/home-pages/issues)。** 请尽量附上 Obsidian 版本、操作系统以及复现步骤。
-- **使用问题与交流——QQ 群 `1094620986`。** 群内使用简体中文交流。
-
----
-
-## 📬 联系方式
-
-- **QQ 群：** `1094620986`
-- **维护者：** [star-nebula](https://github.com/star-nebula)
-
----
-
-## 📄 开源许可证
-
-本项目基于 [GNU General Public License v3.0](LICENSE) 协议开源。
+[GNU General Public License v3.0](LICENSE)。

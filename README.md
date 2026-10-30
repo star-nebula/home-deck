@@ -1,79 +1,56 @@
-[![English](https://img.shields.io/badge/Language-English-blue)](README.md)
-[![简体中文](https://img.shields.io/badge/Language-简体中文-red)](README.zh-CN.md)
+# Home Deck for Obsidian
 
-# Home Pages for Obsidian
+A fast, customizable homepage dashboard for Obsidian. Home Deck gives you a 12-column adaptive grid, draggable and resizable cards, multiple pages, and 19 built-in widgets. Layouts and settings stay local in `data.json` — no analytics, telemetry, or hidden network tracking.
 
-A modern, modular, and responsive homepage dashboard plugin for Obsidian. Built on a flexible 12-column adaptive grid, it empowers you to customize your workspace with draggable, resizable, and individually configurable widgets. Support multiple pages and third-party plugin integrations.
+> **Project origin:** Home Deck is an independent fork of [jepicaju862-lab/home-pages](https://github.com/jepicaju862-lab/home-pages) (GPL-3.0), maintained by [star-nebula](https://github.com/star-nebula). All credit for the original work goes to its author. Plugin id: `home-deck`.
+>
+> **Migrating from Home Pages?** Install Home Deck, enable it once, and your layout is copied from `.obsidian/plugins/home-pages-star-nebula/data.json` automatically. The old plugin and its data are left untouched. A backup is written to `.obsidian/plugins/home-deck/data.pre-migration.json`.
 
-> [!IMPORTANT]
-> **About this fork:** This project is a fork of [jepicaju862-lab/home-pages](https://github.com/jepicaju862-lab/home-pages) (GPL-3.0), maintained independently by [star-nebula](https://github.com/star-nebula) since the original project became unresponsive to issues and pull requests. All credit for the original work goes to the original author. Plugin id: `home-pages-star-nebula` — it can be installed alongside the original plugin. Existing users of the original plugin need to reinstall this version and copy `data.json` from `.obsidian/plugins/home-pages/` to `.obsidian/plugins/home-pages-star-nebula/` to migrate their layouts.
+## Features
 
-- **Releases:** [GitHub Releases](https://github.com/star-nebula/home-pages/releases) — no release has been published from this fork yet. Tags inherited from the upstream repository (`v0.3.1` and earlier) exist here as tags only and carry no release assets.
-- **Minimum Obsidian version:** 1.7.2
-- **Supported platforms:** Desktop and Obsidian Mobile (iOS / Android)
-- **License:** [GNU General Public License v3.0](LICENSE)
+| Area | Widgets |
+| :--- | :--- |
+| **Dashboard basics** | Welcome banner with clock/weather/vault stats, recent notes, quick access tiles, countdown & anniversaries, daily quote, note embed |
+| **Focus & planning** | Pomodoro timer, task kanban, habit tracker, daily note diary, “on this day” review |
+| **Vault insight** | All-notes index, knowledge map, vault statistics |
+| **Optional integrations** | Duowei table digest, annotation inbox, WeChat inbox, integrated feed, mainstream media / RSS reader |
 
-> [!NOTE]
-> **Local-First & Privacy Assured:** Home Pages operates entirely within your local Obsidian vault. Layouts, states, and settings are persisted locally in `data.json` without any background analytics, telemetry, or hidden network tracking.
+Highlights:
 
----
+- **12-column adaptive grid** that reflows on desktop, tablet, and mobile.
+- **WYSIWYG layout editing** — drag cards, resize with the corner handle, duplicate/delete, and reorder pages.
+- **Multiple dashboards** (e.g. Work, Life, Projects) with draggable tabs.
+- **JSON import/export** for backup and cross-vault migration.
+- **Path-scoped refresh** — only cards affected by a file change re-render, and hidden cards stay idle. Large vaults stay responsive.
 
-## 🌟 Features
+## Installation
 
-### 🧩 Rich Built-in Dashboard Widgets
+1. Download `main.js`, `manifest.json`, and `styles.css` from the latest release.
+2. Create `<vault>/.obsidian/plugins/home-deck/`.
+3. Copy the three files into that folder.
+4. Enable **Home Deck** in **Settings → Community plugins**.
 
-Home Pages comes with 12+ built-in productivity widgets that can be freely combined and configured:
+Minimum Obsidian version: **1.7.2**. Desktop and mobile are supported.
 
-| Widget | Description | Key Configurations |
-| :--- | :--- | :--- |
-| **Welcome Banner** | Greeting by time of day, custom nickname, live clock (optional seconds), weather forecast, vault stats, countdown badge, and customizable background image. | Weather provider (CMA Station / Open-Meteo / QWeather), city/district selection, background mask, field toggles, vault founding date, target date. |
-| **Recent Notes** | Fast access to recently modified or newly created notes with folder paths. | Note count limit, include/exclude folders, sort order, display folder option. |
-| **All Notes** | Full-vault note index: category chips, instant filtering (title / filename / sub-category / owning MOC) and collapsible main/leaf groups, with an abstract and MOC links on every row. | Grouping source (frontmatter field / folder / tag), category field name, scope folder (dropdown of every folder with its note count, largest first), excluded folders (picked one at a time, removable individually), abstract and MOC toggles, display limit. |
-| **Knowledge Map** | Configurable native graph with section statistics. Choose the vault, knowledge base, knowledge plus creation folders, or any custom folder; click a section chip to filter and restore the scope. Native zoom, drag, filtering and note opening remain available. | Graph scope, custom folder, excluded folders, default section, statistics chips, chip counts, automatic color grouping. |
-| **Quick Access** | Pinned notes, folders, or attachments displayed as interactive icon tiles. | Note path autocomplete, display name, Lucide icon picker, custom order, column count. |
-| **Countdown & Anniversaries** | Accurate day count tracking remaining days to goals or elapsed days from anniversaries. | Target date, counting direction (past / future), description and subtitle. |
-| **Pomodoro Clock** | Focus, short break, and long break cycle timer with progress ring, task note, and daily/weekly completion statistics. Timers persist across note switches and restarts. | Stage durations, long break frequency, auto-start breaks, sound alerts, system notifications. |
-| **Daily Quote** | Display inspiring quotes from a dedicated note (one per line) or custom quote list. | Source note path, daily rotation vs. random, custom quote pool. |
-| **Habit Tracker** | Today's check-in checklist combined with a GitHub-style activity heatmap (week / month / year), plus the current streak. | Habit items list, storage mode (local plugin data or Daily Note task block sync). |
-| **Task Kanban** | Scans `- [ ]` markdown tasks and arranges them across Todo `[ ]`, Doing `[/]`, and Done `[x]` columns. Supports drag-and-drop status changes and inline task creation. | Source file or folder, default inbox file, column headers, hide completed toggle. |
-| **Vault Statistics** | Overview metrics including notes count, tags, word count, attachments, folders, vault age, created today, and modified this week. | Metric items toggle, grid column layout, exclude folders. |
-| **On This Day** | Surfaces notes created or written on this day across past years. | Item count limit, date property key, filename date fallback, ctime fallback. |
-| **Note Embed** | Render any note or specific heading section directly within your dashboard. | Note path, section heading, hide frontmatter toggle. |
-| **Integrated Feed** *(Optional)* | Aggregated information stream combining duowei table insights, annotation inbox, and synced messages. | Source toggles, table scope, date fields, message sources. |
-| **Tasks & Schedule** *(Duowei Table)* | Scans multidimensional tables (`.duowei`), surfaces overdue, today, upcoming, and recent updates with direct row navigation. | Scan scope, exclude tables, date field mappings, section day limits. |
-| **WeChat Inbox** | Aggregates WeChat sync messages with text, audio transcription, and image thumbnails. | Data source, unorganized filter, days range, type filters. |
-| **Annotations & Review** | Connects to Mobile Ink Annotation Pro to show inbox annotations, daily reviews, and collections. | Card statistics, thumbnail preview, one-click jump to annotation center. |
-| **Media & RSS Subscriptions** | Surfaces articles from mainstream sources and personal custom RSS / OPML feeds. Supports Follow exports, nested categories, podcast/video detection, and offline Markdown clipping. | Channel nav style, default channel, OPML import/export, category organization, clipping folder. |
+## Layout editing
 
----
+Click **Edit layout** in the view header:
 
-## 📐 Responsive 12-Column Layout
+- Drag a card by its title/grip to reorder; drag the bottom-right handle to resize.
+- Use the edit bar to move, resize, configure, duplicate, or delete a card.
+- Drag page tabs to reorder; right-click a tab to rename, move, or delete it.
+- Press `Esc` to cancel an in-progress drag or resize.
 
-- **12-Column Adaptive Grid**: Automatically reflows and scales proportionately based on viewport width, providing a native visual layout on both desktop ultrawide monitors and mobile devices.
-- **WYSIWYG Layout Editing**:
-  - Click **Edit Layout** in the header to enter arrangement mode.
-  - Drag cards with a mouse, or drag their title/grip on touchscreens. Insertion markers support rows, columns, and gaps; dragging near the view edge scrolls automatically. Press Esc to cancel.
-  - Drag the corner handle to resize; width snaps to columns and height to rows, with a live size badge (height only on narrow screens, Esc cancels). Footer buttons and arrow keys on the focused handle step the size too. Edit mode shows 12 column guides.
-  - Easily move forward, move backward, duplicate, or delete any widget.
-- **Multi-Page Management**:
-  - Click `+` at the end of the tab bar at any time to create distinct pages (e.g., "Work Dashboard", "Life Log", "Project Hub").
-  - Drag page tabs to reorder in edit mode. Right-click tabs to rename, move left/right, or delete pages.
-- **JSON Import & Export**: One-click copy and paste of complete dashboard layouts for easy backup and cross-vault migration.
+## Host API for plugin developers
 
----
-
-## 🔌 Host API for Plugin Developers
-
-Home Pages exposes a lightweight host API allowing other Obsidian plugins to register custom widgets and views into the homepage framework:
+Other plugins can register widgets without patching Home Deck:
 
 ```ts
-// Retrieve the API instance when Home Pages is loaded (or listen to "home-pages-star-nebula:ready")
-const api = app.plugins.plugins["home-pages-star-nebula"]?.api;
+const api = app.plugins.plugins["home-deck"]?.api;
+// Or listen for the "home-deck:ready" workspace event.
 
-// 1. Register a new widget type
 const unregister = api.registerWidget(myWidgetDefinition, "my-plugin-id");
 
-// 2. Programmatically pin a widget to the current homepage
 api.pinWidget("my-widget-kind", { ref: "note-path" }, {
   title: "My Pinned View",
   w: 6,
@@ -81,171 +58,44 @@ api.pinWidget("my-widget-kind", { ref: "note-path" }, {
   provider: "my-plugin-id"
 });
 
-// 3. Trigger a dashboard redraw when underlying data changes
 api.refresh("my-widget-kind");
-
-// 4. Utilize consistent UI rendering helpers
 api.ui.renderKpi(containerEl, { label: "Completed", value: 12 });
 api.ui.renderEmpty(containerEl, { message: "No data available" });
 ```
 
-> **Integration Example:** **Duowei Table (duowei-table-pro ≥ 1.4.0)** registers `duowei-view` via the Host API. Users can right-click any table view tab and select "Pin to Homepage" to display live calendars, kanban boards, and progress timelines on their homepage.
+A widget definition is the same object described in `src/core/ports.ts`: `kind`, `name`, `description`, `icon`, `accent`, `defaultSize`, `defaultConfig`, `render`, `renderSettings`, and optional refresh flags / `refreshScope`.
 
----
+> **Custom JavaScript scripts are not supported.** The old fork could execute `.js` files from a vault folder; Home Deck intentionally removed that loader for safety and startup performance. Build a small plugin and use the Host API instead.
 
-## 🧩 User-Defined Custom Widgets (Folder-based & Hot-Reload)
-
-Users can build custom widgets directly in JavaScript without creating separate plugins:
-
-1. In plugin settings, navigate to **"Custom Widgets"**.
-2. Set the **"Custom Widgets Folder"** (e.g. `.scripts/home-pages/`), or click **"📄 Create Demo Widget Template"** to auto-generate `demo-widget.js`.
-   Hidden folders such as `.scripts/home-pages/` are supported; changes are checked about every 2 seconds. Visible folders use vault file events.
-3. Create or edit `.js` files exporting a standard widget definition:
-   ```javascript
-   module.exports = {
-     kind: "user-clock",
-     name: "Custom Clock",
-     description: "Real-time clock widget",
-     icon: "clock",
-     accent: "#6366f1",
-     defaultSize: { w: 4, h: 3 },
-     defaultConfig: () => ({ greeting: "Hello" }),
-     render(body, ctx) {
-       body.empty();
-       const el = body.createDiv();
-       el.setText(`${ctx.config.greeting} · ${new Date().toLocaleTimeString()}`);
-       ctx.registerInterval(() => {
-         el.setText(`${ctx.config.greeting} · ${new Date().toLocaleTimeString()}`);
-       }, 1000);
-     }
-   };
-   ```
-4. **Save and it appears**: The first time a new script loads, its widget is added to the current page (once per widget; editing a script after you removed its card does not add it back; turn off with **Add new custom widgets automatically**).
-5. **Live Hot-Reload**: Save modifications to your `.js` file from Obsidian or an external editor like VS Code, and homepage cards will **automatically reload and re-render instantly**!
-6. **Community example**: [examples/vault-heatmap.js](examples/vault-heatmap.js) ships a ready-to-use "Vault Heatmap" widget — a GitHub-style contribution calendar that counts all vault notes by modification day (per-file daily dedup, month abbreviations on the x-axis, Mon / Wed / Fri on the y-axis). Copy the file into your custom widgets folder to use it; weeks shown, excluded folders, accent color and auto-refresh interval are configurable in the card settings.
-
----
-
-## 📥 Installation
-
-### Method 1: Obsidian Community Plugins
-
-This fork is **not** published in the official community directory. Searching **Home Pages** under **Settings → Community plugins → Browse** installs the original upstream plugin, not this one. Use Method 2 (or build from source, see Development) to get this fork.
-
-### Method 2: Manual Installation
-
-1. This fork has no release assets to download yet, so build them from source:
-   ```bash
-   git clone https://github.com/star-nebula/home-pages.git
-   cd home-pages
-   npm ci
-   npm run build
-   ```
-   The repository root then contains the three files you need: `main.js`, `manifest.json`, `styles.css`.
-2. Locate or create your plugin folder inside your vault (the folder name should match the plugin id):
-   ```text
-   <vault>/.obsidian/plugins/home-pages-star-nebula/
-   ```
-3. Copy those three files into that directory.
-4. Reload Obsidian and enable **Home Pages** in **Settings → Community plugins**.
-
----
-
-## 🖊️ Usage
-
-1. **Opening Home Pages**:
-   - Click the homepage icon on the left ribbon.
-   - Or press `Ctrl/Cmd + P` and execute the command `Home Pages: Open Homepage`.
-2. **Customizing Layout & Widgets**:
-   - Click **Edit Layout** in the top-right corner of the view.
-   - Click **Add Widget** at the top to select and insert any widget.
-   - Click the **Gear** icon on any card header to customize its parameters (weather city, habit list, stats filters, etc.).
-3. **Global Settings**:
-   - Navigate to Obsidian **Settings → Home Pages**.
-   - Configure auto-open on startup, default row height (px), grid gap, maximum width, and manage pages.
-
----
-
-## ⚙️ Settings Reference
-
-| Setting | Description | Default |
-| :--- | :--- | :--- |
-| **Open on startup** | Automatically open homepage when Obsidian launches | On |
-| **Open in new tab** | Open homepage in a new tab instead of replacing active tab | On |
-| **Row height** | Unit height for grid rows in pixels (24px - 96px) | 40px |
-| **Grid gap** | Spacing between widget cards in pixels (4px - 40px) | 16px |
-| **Max content width** | Max width constraint (0 fills window width) | 1400px |
-| **Always show page tabs** | Keep page tabs visible even with single page | On (new installs) |
-| **Add new custom widgets automatically** | Put a custom widget on the current page the first time its script loads | On |
-| **Page management** | Add, duplicate, rename, or remove homepage layouts | Default page |
-| **Import / Export** | Copy or paste full dashboard layouts in JSON format | - |
-
----
-
-## 🔒 Data & Privacy
-
-- **100% Local Storage:** All dashboard configurations, layout JSONs, pomodoro records, and habits are stored locally in `data.json`.
-- **Zero Telemetry:** The plugin does not collect usage analytics, telemetry, or user metrics.
-- **Network Requests:** Weather queries are only initiated when a weather-enabled banner is rendered:
-  - CMA Station requests public endpoints without keys.
-  - Open-Meteo and QWeather only connect when explicitly selected and configured.
-- **Bundle Integrity:** A fail-closed security gate (`scripts/verify-bundle.mjs`) ensures the distributed bundle contains no dynamic script generation, `eval()`, or `new Function()`.
-
----
-
-## ❓ FAQ
-
-### Will layout break on mobile devices?
-No. Home Pages provides responsive adaptive rules for small screens. On narrow viewports, the grid seamlessly collapses into full-width or compact columns optimized for touch interaction.
-
-### Does the Pomodoro timer keep running if I switch notes or restart Obsidian?
-Yes. The timer state and start timestamp are persisted in plugin memory and data. Switching views or restarting Obsidian restores the timer seamlessly.
-
-### How do I restore the default initial layout?
-In **Settings → Home Pages → Pages**, click **＋ New Default Page** at any time to generate a clean instance of the default layout.
-
----
-
-## 🧑‍💻 Development
-
-Contributions and pull requests are welcome!
+## Development
 
 ```bash
-# 1. Install dependencies
 npm install
-
-# 2. Start dev build with watch mode
-npm run dev
-
-# 3. Lint source code
+npm run dev        # esbuild watch; syncs main.js/manifest.json/styles.css to .dev-target
 npm run lint
-
-# 4. Production build with security audit
-npm run build
+npm run build      # tsc + production bundle + security/identity check
+npm test           # integration + core migration/index tests
+npm run test:sorting  # Playwright layout tests (requires playwright)
+npm run deploy     # copy build output to HOME_DECK_DEV_PLUGIN_DIR
 ```
 
----
+Set the dev target with `HOME_DECK_DEV_PLUGIN_DIR` or a one-line `.dev-target` file containing the absolute plugin directory. See `docs/development.md`.
 
-## 📋 Release Notes
+Source layout:
 
-For detailed changelogs and version release histories, see [RELEASE_NOTES.md](RELEASE_NOTES.md) (or [RELEASE_NOTES.zh-CN.md](RELEASE_NOTES.zh-CN.md)).
+```text
+src/core/        identity, persisted types, ports, registry, settings repository, layout store, migrations
+src/services/    incremental VaultIndex, mtime cache
+src/widgets/     the 19 built-in widgets + builtins.ts
+src/ui/          shared DOM, modal, settings, and sorting helpers
+src/view.ts      HomeView + per-card WidgetHost
+src/main.ts      plugin lifecycle and service wiring
+```
 
----
+## Privacy
 
-## 🤝 Support & Feedback
+Home Deck reads only the local vault and local plugin data. Weather, media/RSS, and optional integrations make network requests only when their card is visible or refreshed; no usage data is collected.
 
-- **Bug Reports & Feature Requests — [this repository's issue tracker](https://github.com/star-nebula/home-pages/issues).** Please include your Obsidian version, operating system, and reproduction steps whenever possible.
-- **Questions & Discussion — QQ group `1094620986`.** The group communicates primarily in Simplified Chinese.
+## License
 
----
-
-## 📬 Contact
-
-- **QQ group:** `1094620986`
-- **Maintainer:** [star-nebula](https://github.com/star-nebula)
-
----
-
-## 📄 License
-
-This project is licensed under the [GNU General Public License v3.0](LICENSE).
+[GNU General Public License v3.0](LICENSE).

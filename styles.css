@@ -2487,32 +2487,6 @@ input.hp-allnotes-search[type="text"]:focus {
   font-size: 11px;
 }
 
-.hp-paste-error {
-  color: var(--text-error);
-  margin-bottom: 8px;
-  font-size: 13px;
-}
-
-.hp-add-topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 14px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: var(--background-secondary);
-}
-
-.hp-add-topbar-text {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.hp-add-card-paste {
-  border-style: dashed;
-  --hp-accent: #6366f1;
-}
-
 .hp-add-name-row {
   display: flex;
   align-items: center;
@@ -2538,43 +2512,6 @@ input.hp-allnotes-search[type="text"]:focus {
   background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
   color: var(--interactive-accent);
   white-space: nowrap;
-}
-
-.hp-add-card-del {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 5px;
-  color: var(--text-muted);
-  opacity: 0.5;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
-}
-
-.hp-add-card:hover .hp-add-card-del {
-  opacity: 1;
-}
-
-.hp-add-card-del:hover {
-  color: var(--text-error);
-  background: var(--background-modifier-hover);
-}
-
-.hp-delete-meta {
-  margin: 10px 0 16px;
-  padding: 10px 12px;
-  border-radius: 6px;
-  background: var(--background-secondary);
-  font-size: 12px;
-  color: var(--text-muted);
-  line-height: 1.5;
 }
 
 /* ---- 响应式：窄容器时所有卡片占满一行 --------------------------------------- */
@@ -2685,52 +2622,6 @@ input.hp-allnotes-search[type="text"]:focus {
   gap: 8px;
   min-height: 0;
   padding: 10px 12px 12px;
-}
-
-.hp-annot-toolbar {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.hp-annot-toolbar .hp-pill:nth-child(2) {
-  margin-right: auto;
-}
-
-.hp-annot-stats {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: 6px;
-}
-
-.hp-annot-stat {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 78px;
-  padding: 6px 10px;
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--hp-tone) 12%, transparent);
-}
-
-.hp-annot-stat.is-clickable {
-  cursor: pointer;
-}
-
-.hp-annot-stat-value {
-  color: var(--hp-tone);
-  font-size: 18px;
-  font-weight: 800;
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
-}
-
-.hp-annot-stat-label {
-  color: var(--hp-muted);
-  font-size: 10.5px;
 }
 
 .hp-annot-collection {
@@ -3173,13 +3064,6 @@ input.hp-allnotes-search[type="text"]:focus {
   gap: 8px;
   min-height: 0;
   padding: 10px 12px 12px;
-}
-
-.hp-wechat-toolbar {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  gap: 4px;
 }
 
 .hp-wechat-list {
@@ -4376,10 +4260,6 @@ input.hp-allnotes-search[type="text"]:focus {
   background: var(--background-modifier-border);
 }
 
-.hp-media-skeleton-line.w-80 { width: 80%; }
-.hp-media-skeleton-line.w-50 { width: 50%; height: 10px; }
-.hp-media-skeleton-line.w-30 { width: 30%; height: 10px; }
-
 /* 刷新旋转图标动画 */
 .hp-media-btn.is-spinning svg {
   animation: hp-media-spin 0.8s linear infinite;
@@ -4965,14 +4845,6 @@ input.hp-allnotes-search[type="text"]:focus {
   opacity: 0.85;
   width: 28px;
   height: 28px;
-}
-
-.is-tablet .hp-wechat-toolbar .hp-pill,
-.is-mobile .hp-wechat-toolbar .hp-pill,
-.is-touch-device .hp-wechat-toolbar .hp-pill {
-  padding: 4px 12px;
-  font-size: 12px;
-  min-height: 28px;
 }
 
 .is-tablet .hp-digest-row,
